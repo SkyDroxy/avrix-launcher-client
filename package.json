@@ -1,7 +1,7 @@
 {
   "name": "avrix-launcher-tauri",
   "private": true,
-  "version": "0.2.4",
+  "version": "0.2.6",
   "sideEffects": [
     "*.css"
   ],
