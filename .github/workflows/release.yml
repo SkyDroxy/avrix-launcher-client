@@ -56,6 +56,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Set default NEW_VERSION from package.json
+        run: |
+          $ver = node -e "console.log(require('./package.json').version)"
+          echo "NEW_VERSION=$ver" >> $env:GITHUB_ENV
+
       - name: Bump version from input (manual dispatch)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |

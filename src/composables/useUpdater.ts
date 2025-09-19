@@ -118,7 +118,7 @@ export function useUpdater() {
 
   async function openReleases() {
     try {
-      await openUrl('https://github.com/your-org/your-repo/releases');
+      await openUrl('https://github.com/SkyDroxy/avrix-launcher-client/releases');
     } catch {}
   }
 
