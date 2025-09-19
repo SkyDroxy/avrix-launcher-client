@@ -81,6 +81,26 @@ jobs:
           git tag v$env:NEW_VERSION
           git push origin HEAD:main --follow-tags
 
+      - name: Ensure GitHub Release exists
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = "${{ github.repository }}"
+          $tag = "v$env:NEW_VERSION"
+          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'User-Agent' = 'gh-actions'; Accept = 'application/vnd.github+json' }
+          try {
+            $resp = Invoke-RestMethod -Method GET -Uri "https://api.github.com/repos/$repo/releases/tags/$tag" -Headers $headers
+            $id = $resp.id
+          } catch {
+            $payload = @{ tag_name = $tag; name = "Avrix Launcher $tag"; body = "Auto-generated release for $tag"; draft = $false; prerelease = $false } | ConvertTo-Json
+            $create = Invoke-RestMethod -Method POST -Uri "https://api.github.com/repos/$repo/releases" -Headers $headers -Body $payload
+            $id = $create.id
+          }
+          if (-not $id) { throw "Failed to determine release id" }
+          echo "RELEASE_ID=$id" >> $env:GITHUB_ENV
+
       - name: Build and Publish Release (Tauri Action)
         uses: tauri-apps/tauri-action@v0
         env:
@@ -89,13 +109,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: --bundles nsis
-          tagName: v${{ env.NEW_VERSION }}
-          releaseName: Avrix Launcher v${{ env.NEW_VERSION }}
-          releaseBody: |
-            Auto-generated release for v${{ env.NEW_VERSION }}.
-            - Windows installer & updater artifacts (including latest.json) included.
-          releaseDraft: false
-          prerelease: false
+          releaseId: ${{ env.RELEASE_ID }}
 
       - name: Prepare latest.json for S3
         shell: pwsh
