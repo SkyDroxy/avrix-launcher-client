@@ -32,7 +32,10 @@ pub fn install_plugin_local(path: String, window: tauri::Window) -> Result<Strin
     emit(&format!("Game root: {}", game_root.to_string_lossy()));
     let plugins_dir = crate::util::resolve_plugins_dir();
     std::fs::create_dir_all(&plugins_dir)?;
-    emit(&format!("Plugins folder: {}", plugins_dir.to_string_lossy()));
+    emit(&format!(
+        "Plugins folder: {}",
+        plugins_dir.to_string_lossy()
+    ));
     let file_name = src
         .file_name()
         .and_then(|n| n.to_str())
@@ -69,7 +72,10 @@ pub fn install_plugin_from_url(url: String, window: tauri::Window) -> Result<Ins
             }
         }
     }
-    let resp = minreq::get(&url).send().map_err(|e| { error("install", &format!("Request error: {}", e)); anyhow!(e) })?;
+    let resp = minreq::get(&url).send().map_err(|e| {
+        error("install", &format!("Request error: {}", e));
+        anyhow!(e)
+    })?;
     let code = resp.status_code;
     if code < 200 || code >= 300 {
         error("install", &format!("HTTP {}", code));
@@ -93,7 +99,10 @@ pub fn install_plugin_from_url(url: String, window: tauri::Window) -> Result<Ins
         "downloaded-plugin.jar"
     };
     tmp_path.push(file_name);
-    emit(&format!("Writing temp file: {}", tmp_path.to_string_lossy()));
+    emit(&format!(
+        "Writing temp file: {}",
+        tmp_path.to_string_lossy()
+    ));
     std::fs::write(&tmp_path, bytes).map_err(|e| {
         error("install", &format!("Write error: {}", e));
         anyhow!(e)
@@ -118,7 +127,10 @@ pub fn install_plugin_from_url(url: String, window: tauri::Window) -> Result<Ins
     let size = bytes.len() as u64;
     emit("Done");
     Ok(InstallFromUrlResult {
-        message: format!("Plugin downloaded and installed: {}", dest.to_string_lossy()),
+        message: format!(
+            "Plugin downloaded and installed: {}",
+            dest.to_string_lossy()
+        ),
         size,
         sha256,
         name: meta.as_ref().and_then(|m| m.name.clone()),

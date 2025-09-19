@@ -9,6 +9,8 @@ mod util;
 mod workshop;
 
 use crate::logger::info;
+use tauri_plugin_updater::UpdaterExt;
+use url::Url;
 #[tauri::command]
 fn scan_plugins(window: tauri::Window) -> Result<models::PluginsResult, String> {
     info("main", "scan_plugins invoked");
@@ -17,7 +19,10 @@ fn scan_plugins(window: tauri::Window) -> Result<models::PluginsResult, String> 
 
 #[tauri::command]
 fn launch_game(window: tauri::Window, steam: bool, mem_mb: Option<u64>) -> Result<String, String> {
-    info("main", &format!("launch_game invoked (steam={}, mem_mb={:?})", steam, mem_mb));
+    info(
+        "main",
+        &format!("launch_game invoked (steam={}, mem_mb={:?})", steam, mem_mb),
+    );
     launch::launch_game(window, steam, mem_mb).map_err(|e| e.to_string())
 }
 
@@ -25,7 +30,9 @@ fn launch_game(window: tauri::Window, steam: bool, mem_mb: Option<u64>) -> Resul
 fn get_memory_info() -> Result<models::MemoryInfo, String> {
     info("main", "get_memory_info invoked");
     use sysinfo::{MemoryRefreshKind, RefreshKind, System};
-    let mut sys = System::new_with_specifics(RefreshKind::nothing().with_memory(MemoryRefreshKind::everything()));
+    let mut sys = System::new_with_specifics(
+        RefreshKind::nothing().with_memory(MemoryRefreshKind::everything()),
+    );
     sys.refresh_memory();
     let total_mb = (sys.total_memory() / (1024 * 1024)) as u64;
     let available_mb = (sys.available_memory() / (1024 * 1024)) as u64;
@@ -37,7 +44,10 @@ fn get_memory_info() -> Result<models::MemoryInfo, String> {
 
 #[tauri::command]
 fn install_plugin_local(path: String, window: tauri::Window) -> Result<String, String> {
-    info("main", &format!("install_plugin_local invoked (path={})", path));
+    info(
+        "main",
+        &format!("install_plugin_local invoked (path={})", path),
+    );
     install::install_plugin_local(path, window).map_err(|e| e.to_string())
 }
 
@@ -46,19 +56,28 @@ fn install_plugin_from_url(
     url: String,
     window: tauri::Window,
 ) -> Result<models::InstallFromUrlResult, String> {
-    info("main", &format!("install_plugin_from_url invoked (url={})", url));
+    info(
+        "main",
+        &format!("install_plugin_from_url invoked (url={})", url),
+    );
     install::install_plugin_from_url(url, window).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn validate_plugin_local(path: String) -> Result<models::ValidationMetadata, String> {
-    info("main", &format!("validate_plugin_local invoked (path={})", path));
+    info(
+        "main",
+        &format!("validate_plugin_local invoked (path={})", path),
+    );
     install::validate_plugin_local(path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn validate_plugin_from_url(url: String) -> Result<models::ValidationMetadata, String> {
-    info("main", &format!("validate_plugin_from_url invoked (url={})", url));
+    info(
+        "main",
+        &format!("validate_plugin_from_url invoked (url={})", url),
+    );
     install::validate_plugin_from_url(url).map_err(|e| e.to_string())
 }
 
@@ -92,10 +111,29 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle();
             logger::setup_global_handlers(&handle);
             store::setup_stores(&handle).map_err(tauri::Error::from)?;
+            // Configure updater at runtime (endpoints and pubkey)
+            // Use environment variables to avoid hardcoding values in config.
+            // AVRIX_UPDATER_ENDPOINT can contain variables like {{target}}, {{arch}}, {{current_version}}
+            let endpoint = std::env::var("AVRIX_UPDATER_ENDPOINT").unwrap_or_default();
+            let pubkey = std::env::var("AVRIX_UPDATER_PUBKEY").ok();
+            let mut builder = app.updater_builder();
+            if !endpoint.is_empty() {
+                if let Ok(url) = Url::parse(&endpoint) {
+                    builder = builder.endpoints(vec![url])?;
+                }
+            }
+            if let Some(pk) = pubkey {
+                builder = builder.pubkey(pk);
+            }
+            // finalize updater runtime configuration
+            builder.build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -1,6 +1,5 @@
 use once_cell::sync::Lazy;
 use serde::Serialize;
-use tauri::Emitter;
 use std::{
     fs::{self, OpenOptions},
     io::Write,
@@ -8,6 +7,7 @@ use std::{
     path::PathBuf,
     sync::{Mutex, Once},
 };
+use tauri::Emitter;
 
 static LOG_FILE: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
 static CRASH_FILE: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
@@ -99,7 +99,12 @@ struct AppLog<'a> {
     message: String,
 }
 
-pub fn emit_app_log(window: &tauri::Window, level: Level, source: &str, message: &str) -> tauri::Result<()> {
+pub fn emit_app_log(
+    window: &tauri::Window,
+    level: Level,
+    source: &str,
+    message: &str,
+) -> tauri::Result<()> {
     let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let payload = AppLog {
         ts,
@@ -132,18 +137,23 @@ pub fn setup_global_handlers(app: &tauri::AppHandle) {
             let path = ensure_crash_path();
             let header = format!(
                 "{} [CRASH] reason={} location={}",
-                ts, reason.replace('\n', "\\n"), location
+                ts,
+                reason.replace('\n', "\\n"),
+                location
             );
             write_line(&path, &header);
             write_line(&path, &format!("backtrace:\n{:?}", bt));
             // Also mirror to main log as ERROR
             error("panic", &format!("{} | {}", reason, location));
-            let _ = handle.emit("app-log", AppLog {
-                ts: ts.to_string(),
-                level: "ERROR",
-                source: "panic",
-                message: format!("{} @ {}", reason, location),
-            });
+            let _ = handle.emit(
+                "app-log",
+                AppLog {
+                    ts: ts.to_string(),
+                    level: "ERROR",
+                    source: "panic",
+                    message: format!("{} @ {}", reason, location),
+                },
+            );
         }));
     });
 }

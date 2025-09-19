@@ -8,6 +8,7 @@ export type MemPreset = 'auto' | 'low' | 'mid' | 'high';
 export interface SettingsModel {
   memPreset: MemPreset;
   memoryMB: number; // exact memory amount in MB
+  autoCheckUpdates?: boolean;
 }
 
 // Use the settings file next to the executable; path is provided by backend
@@ -27,6 +28,7 @@ async function ensureStore(): Promise<LazyStore> {
 // Back-compat preset plus new numeric value
 const memPreset = ref<MemPreset>('auto');
 const memoryMB = ref<number>(0);
+const autoCheckUpdates = ref<boolean>(true);
 
 // Helpers to translate between presets and MB for migration/UI convenience
 function presetToMb(p: MemPreset): number {
@@ -75,7 +77,10 @@ export function useSettings() {
         await s.set('memPreset', memPreset.value);
       }
 
-      await s.save();
+  const ac = (await s.get<boolean>('autoCheckUpdates')) as boolean | null;
+  if (typeof ac === 'boolean') autoCheckUpdates.value = ac;
+
+  await s.save();
     } catch (e) {
       // ignore; use defaults
       if (!memoryMB.value) memoryMB.value = 3072;
@@ -86,12 +91,14 @@ export function useSettings() {
     const s = await ensureStore();
     await s.set('memPreset', memPreset.value);
     await s.set('memoryMB', memoryMB.value || presetToMb(memPreset.value));
+    await s.set('autoCheckUpdates', autoCheckUpdates.value);
     await s.save();
   }
 
   return {
     memPreset,
     memoryMB,
+    autoCheckUpdates,
     load,
     save,
     mbToPreset,

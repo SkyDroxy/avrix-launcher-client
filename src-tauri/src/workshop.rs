@@ -75,7 +75,9 @@ pub fn scan_workshop(window: tauri::Window) -> Result<WorkshopScanResult> {
         emit("Workshop scan: no roots");
     } else {
         emit(&format!("Workshop scan started in: {}", roots_list));
-        if roots.len() > 1 { emit(&format!("Roots (absolute): {}", roots_list)); }
+        if roots.len() > 1 {
+            emit(&format!("Roots (absolute): {}", roots_list));
+        }
     }
 
     let mut seen: HashSet<String> = HashSet::new();

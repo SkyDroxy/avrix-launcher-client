@@ -10,7 +10,10 @@ use std::{
 use tauri::{Emitter, Window};
 
 pub fn launch_game(window: Window, steam: bool, mem_mb: Option<u64>) -> Result<String> {
-    info("launch", &format!("launch_game invoked (steam={}, mem_mb={:?})", steam, mem_mb));
+    info(
+        "launch",
+        &format!("launch_game invoked (steam={}, mem_mb={:?})", steam, mem_mb),
+    );
     let ctx = resolve_launch_context()?;
     let core_jar = ctx
         .core_jar
@@ -24,7 +27,10 @@ pub fn launch_game(window: Window, steam: bool, mem_mb: Option<u64>) -> Result<S
         let _ = window.emit("launch-log", m.to_string());
         let _ = emit_app_log(&window, lvl, "launch", m);
     };
-    emit(Level::Info, &format!("[JarLookup] Jar chosen : {}", core_jar.display()));
+    emit(
+        Level::Info,
+        &format!("[JarLookup] Jar chosen : {}", core_jar.display()),
+    );
     emit(Level::Info, &format!("[Classpath] {}", ctx.class_path));
     emit(Level::Info, &format!("[LibPath] {}", ctx.library_path));
 
@@ -51,7 +57,10 @@ pub fn launch_game(window: Window, steam: bool, mem_mb: Option<u64>) -> Result<S
     args.push("-cp".into());
     args.push(ctx.class_path.clone());
     args.push("com.avrix.Launcher".into());
-    emit(Level::Info, &format!("Java used  : {}", ctx.java_path.display()));
+    emit(
+        Level::Info,
+        &format!("Java used  : {}", ctx.java_path.display()),
+    );
     emit(
         Level::Info,
         &format!("Command: {} {}", ctx.java_path.display(), args.join(" ")),
@@ -233,8 +242,5 @@ fn find_java() -> Result<PathBuf> {
     if let Ok(p) = which::which(fallback_exe_name) {
         return Ok(p);
     }
-    Err(anyhow!(
-        "java not found (bundled ./jre, JAVA_HOME or PATH)"
-    ))
+    Err(anyhow!("java not found (bundled ./jre, JAVA_HOME or PATH)"))
 }
-

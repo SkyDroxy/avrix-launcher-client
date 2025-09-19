@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.4.2 or v0.4.2)'
+        required: true
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      # Required by tauri signing at build time
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      # Updater runtime config (optional if set in tauri.conf.json)
+      AVRIX_UPDATER_ENDPOINT: https://github.com/SkyDroxy/avrix-launcher-client/releases/latest/download/latest.json
+      AVRIX_UPDATER_PUBKEY: "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ0MDZEQzhEREQwQkEwNUMKUldSY29BdmRqZHdHMUVaR1ZFZWY3ZWJ6NnZ3T3Q5SU1GRGRXSVVOLzAxVGVtMTR4c1lyYmhGeEQK"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Tauri CLI
+        run: pnpm add -D @tauri-apps/cli
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bump version from input (manual dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          node scripts/bump-version.cjs ${{ inputs.version }}
+          $ver = node -e "console.log(require('./package.json').version)"
+          echo "NEW_VERSION=$ver" >> $env:GITHUB_ENV
+
+      - name: Derive version from tag (push tag)
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          $tag = "${{ github.ref_name }}" # e.g., v0.4.2
+          $ver = $tag.TrimStart('v')
+          node scripts/bump-version.cjs $ver
+          echo "NEW_VERSION=$ver" >> $env:GITHUB_ENV
+
+      - name: Create Git tag (manual dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git commit -am "chore: release v$env:NEW_VERSION" || echo "No changes to commit"
+          git tag v$env:NEW_VERSION
+          git push origin HEAD:main --follow-tags
+
+      - name: Build and Publish Release (Tauri Action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v${{ env.NEW_VERSION }}
+          releaseName: Avrix Launcher v${{ env.NEW_VERSION }}
+          releaseBody: |
+            Auto-generated release for v${{ env.NEW_VERSION }}.
+            - Windows installer & updater artifacts (including latest.json) included.
+          releaseDraft: false
+          prerelease: false

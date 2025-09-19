@@ -11,7 +11,8 @@
         </main>
       </div>
     </div>
-    <ToastContainer />
+      <ToastContainer />
+      <UpdateModal v-model="showUpdate" />
   </div>
 </template>
 
@@ -20,8 +21,22 @@ import Sidebar from '@components/layout/sidebar/Sidebar.vue';
 import TitleBar from '@components/layout/TitleBar.vue';
 import ToastContainer from '@components/ui/feedback/ToastContainer.vue';
 import { useRouter } from 'vue-router';
+import { onMounted, ref, watch } from 'vue';
+import { useUpdater } from '@composables/useUpdater';
+import UpdateModal from '@components/ui/overlays/UpdateModal.vue';
 
 const router = useRouter();
+const { checkNow, autoCheckOnStartup, status } = useUpdater();
+const showUpdate = ref(false);
+onMounted(async () => {
+  if (autoCheckOnStartup.value && !import.meta.env.DEV) {
+    const upd = await checkNow({ silent: true });
+    if (upd) showUpdate.value = true;
+  }
+});
+watch(status, (s) => {
+  if (s === 'available') showUpdate.value = true;
+});
 function onLaunched() {
   router.push({ name: 'logs' });
 }

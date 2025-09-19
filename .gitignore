@@ -1,3 +1,19 @@
+# Node
+node_modules/
+dist/
+.pnpm-store/
+
+# Tauri/Rust
+src-tauri/target/
+src-tauri/**/incremental/
+
+# Editor
+.vscode/
+
+# Tauri signing PRIVATE KEY (do not commit!)
+.tauri/*.key
+.tauri/*.pfx
+.tauri/*.pem
 # Node / Vite
 node_modules/
 dist/

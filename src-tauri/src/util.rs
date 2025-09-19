@@ -77,7 +77,10 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
             game_root.to_string_lossy()
         ));
     }
-    emit(&format!("Plugins directory: {}", plugins_dir.to_string_lossy()));
+    emit(&format!(
+        "Plugins directory: {}",
+        plugins_dir.to_string_lossy()
+    ));
 
     let core_jar = base.join("Avrix-Core.jar");
     emit(&format!(
@@ -85,7 +88,7 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
         core_jar.to_string_lossy()
     ));
     if core_jar.exists() {
-    emit("Avrix-Core.jar found, extracting metadata...");
+        emit("Avrix-Core.jar found, extracting metadata...");
         if let Ok(meta_fs) = fs::metadata(&core_jar) {
             if let Ok(raw) = metadata::extract_metadata_from_jar(&core_jar) {
                 let modified = meta_fs
@@ -112,7 +115,10 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
                     parent_id: None,
                 });
             } else {
-                warn("scan", "Core metadata not found (missing or invalid metadata.yml)");
+                warn(
+                    "scan",
+                    "Core metadata not found (missing or invalid metadata.yml)",
+                );
             }
         }
 
@@ -133,7 +139,10 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
                                         if !out.iter().any(|p| {
                                             p.id.as_ref().map(|x| x == &id).unwrap_or(false)
                                         }) {
-                                            emit(&format!("   -> Register internal plugin: {}", id));
+                                            emit(&format!(
+                                                "   -> Register internal plugin: {}",
+                                                id
+                                            ));
                                             out.push(PluginEntry {
                                                 name: format!("{} (internal)", id),
                                                 size_kb: 0,
@@ -157,7 +166,10 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
                                                     .clone()
                                                     .or(Some("avrix-core".into())),
                                             });
-                                            emit(&format!("   -> Internal plugin registered: {}", id));
+                                            emit(&format!(
+                                                "   -> Internal plugin registered: {}",
+                                                id
+                                            ));
                                         }
                                     }
                                 }
@@ -170,7 +182,7 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
     }
 
     if plugins_dir.exists() {
-    emit("Scanning external plugins (.jar)...");
+        emit("Scanning external plugins (.jar)...");
         for entry in fs::read_dir(&plugins_dir)? {
             let e = entry?;
             let p = e.path();
@@ -216,7 +228,10 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
             }
         }
     } else {
-    warn("scan", "No plugins folder found. You may create it manually later.");
+        warn(
+            "scan",
+            "No plugins folder found. You may create it manually later.",
+        );
     }
 
     emit(&format!("Total detected plugins: {}", out.len()));

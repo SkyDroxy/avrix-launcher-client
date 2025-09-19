@@ -5,7 +5,10 @@ use std::path::PathBuf;
 
 pub fn extract_metadata_from_jar(path: &PathBuf) -> Result<RawMetadata> {
     use std::io::Read;
-    info("metadata", &format!("Extracting metadata from {}", path.display()));
+    info(
+        "metadata",
+        &format!("Extracting metadata from {}", path.display()),
+    );
     let file = std::fs::File::open(path)?;
     let mut archive = zip::ZipArchive::new(file)?;
     let mut found_raw: Option<(String, RawMetadata)> = None;
@@ -31,8 +34,8 @@ pub fn extract_metadata_from_jar(path: &PathBuf) -> Result<RawMetadata> {
         }
     }
     if let Some((raw_text, meta)) = found_raw {
-    let preview = raw_text.lines().take(6).collect::<Vec<_>>().join(" | ");
-    info("metadata", &format!("metadata.yml loaded: {} ...", preview));
+        let preview = raw_text.lines().take(6).collect::<Vec<_>>().join(" | ");
+        info("metadata", &format!("metadata.yml loaded: {} ...", preview));
         return Ok(meta);
     }
     if let Some(err) = last_error {

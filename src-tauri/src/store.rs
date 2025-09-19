@@ -1,8 +1,8 @@
+use crate::logger::{info, warn};
 use anyhow::{anyhow, Context, Result};
 use serde_json::json;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
-use crate::logger::{info, warn};
 
 pub fn setup_stores(app: &AppHandle) -> Result<()> {
     let exe_dir = std::env::current_exe()
@@ -14,14 +14,26 @@ pub fn setup_stores(app: &AppHandle) -> Result<()> {
         .store(&target_path)
         .map_err(|e| anyhow!(e.to_string()))?;
 
-    info("store", &format!("Initialized at {}", target_path.display()));
-    info("store", &format!("Using settings file at: {}", target_path.display()));
+    info(
+        "store",
+        &format!("Initialized at {}", target_path.display()),
+    );
+    info(
+        "store",
+        &format!("Using settings file at: {}", target_path.display()),
+    );
 
     let has_mem = store.get("memoryMB").is_some();
     let has_preset = store.get("memPreset").is_some();
 
     if !has_mem || !has_preset {
-    warn("store", &format!("Missing keys -> memoryMB: {}, memPreset: {} (starting migration/defaults)", has_mem, has_preset));
+        warn(
+            "store",
+            &format!(
+                "Missing keys -> memoryMB: {}, memPreset: {} (starting migration/defaults)",
+                has_mem, has_preset
+            ),
+        );
 
         let mut migrated_mem = false;
         let mut migrated_preset = false;
@@ -72,7 +84,7 @@ pub fn setup_stores(app: &AppHandle) -> Result<()> {
             migrated_mem, migrated_preset, defaulted_mem, defaulted_preset
         ));
     } else {
-    info("store", "Keys already present. No migration needed.");
+        info("store", "Keys already present. No migration needed.");
     }
 
     let final_mem = store
@@ -84,7 +96,13 @@ pub fn setup_stores(app: &AppHandle) -> Result<()> {
         .map(|v| v.to_string())
         .unwrap_or_else(|| "<none>".into());
 
-    info("store", &format!("Final values -> memoryMB: {}, memPreset: {}", final_mem, final_preset));
+    info(
+        "store",
+        &format!(
+            "Final values -> memoryMB: {}, memPreset: {}",
+            final_mem, final_preset
+        ),
+    );
 
     Ok(())
 }

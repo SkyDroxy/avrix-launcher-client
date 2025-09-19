@@ -1,7 +1,7 @@
 {
   "name": "avrix-launcher-tauri",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.1.0",
   "sideEffects": [
     "*.css"
   ],
@@ -45,7 +45,11 @@
     "@tauri-apps/plugin-clipboard-manager": "~2.3.0",
     "@tauri-apps/plugin-dialog": "~2.4.0",
     "@tauri-apps/plugin-fs": "~2.4.2",
+    "@tauri-apps/plugin-opener": "~2",
+    "@tauri-apps/plugin-process": "~2",
+    "@tauri-apps/plugin-shell": "~2",
     "@tauri-apps/plugin-store": "~2",
+    "@tauri-apps/plugin-updater": "~2",
     "tailwindcss": "^4.1.13",
     "vue-router": "^4.5.1"
   }
