@@ -25,7 +25,13 @@
     }
   },
   "bundle": {
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "publisher": "Avrix",
+    "windows": {
+      "nsis": {
+        "installMode": "both"
+      }
+    }
   },
   "plugins": {
     "updater": {
