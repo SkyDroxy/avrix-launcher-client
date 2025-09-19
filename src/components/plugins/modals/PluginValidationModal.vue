@@ -8,24 +8,29 @@
     <div v-if="validation" class="space-y-5">
       <div class="grid gap-1 text-[12px]">
         <div class="flex justify-between gap-2">
-          <span class="opacity-60">Nom</span><span class="font-medium truncate">{{ validation.name || '-' }}</span>
+          <span class="opacity-60">Nom</span
+          ><span class="font-medium truncate">{{ validation.name || '-' }}</span>
         </div>
         <div class="flex justify-between gap-2">
-          <span class="opacity-60">Version</span><span class="truncate">{{ validation.version || '-' }}</span>
+          <span class="opacity-60">Version</span
+          ><span class="truncate">{{ validation.version || '-' }}</span>
         </div>
         <div class="flex justify-between gap-2">
-          <span class="opacity-60">Environnement</span><span class="uppercase">{{ validation.environment || '-' }}</span>
+          <span class="opacity-60">Environnement</span
+          ><span class="uppercase">{{ validation.environment || '-' }}</span>
         </div>
         <div class="flex justify-between gap-2">
           <span class="opacity-60">Taille</span><span>{{ humanSize(validation.size) }}</span>
         </div>
         <div class="flex justify-between gap-2">
-          <span class="opacity-60">SHA-256</span><span class="font-mono text-[10px]">{{
+          <span class="opacity-60">SHA-256</span
+          ><span class="font-mono text-[10px]">{{
             validation.sha256 ? shortHash(validation.sha256) : '-'
           }}</span>
         </div>
         <div class="flex justify-between gap-2" v-if="!validation.valid">
-          <span class="text-red-400">Statut</span><span class="text-red-300">{{ validation.message }}</span>
+          <span class="text-red-400">Statut</span
+          ><span class="text-red-300">{{ validation.message }}</span>
         </div>
       </div>
       <div

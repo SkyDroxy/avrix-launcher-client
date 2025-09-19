@@ -11,12 +11,19 @@
         :class="{
           'bg-neutral-800/60 border border-neutral-600': modelValue === opt.value,
         }"
-        :title="opt.label"
         @click="$emit('update:modelValue', opt.value)"
       >
-        <div class="flex items-center gap-2">
-          <Icon :name="iconFor(opt.value)" :width="16" class="opacity-80" />
-          <span>{{ opt.label }}</span>
+        <div class="flex items-center justify-between gap-2 w-full">
+          <div class="flex items-center gap-2">
+            <Icon :name="iconFor(opt.value)" :width="16" class="opacity-80" />
+            <span>{{ opt.label }}</span>
+          </div>
+          <Icon
+            v-if="modelValue === opt.value"
+            name="mingcute:check-fill"
+            :width="16"
+            class="text-success-400"
+          />
         </div>
       </UiButton>
     </div>

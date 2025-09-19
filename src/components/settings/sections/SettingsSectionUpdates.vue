@@ -10,9 +10,11 @@
       <div class="flex items-center justify-between">
         <div>
           <div class="text-sm font-medium">Vérifier au démarrage</div>
-          <div class="text-xs text-neutral-400">Recherche automatiquement des mises à jour au lancement.</div>
+          <div class="text-xs text-neutral-400">
+            Recherche automatiquement des mises à jour au lancement.
+          </div>
         </div>
-  <UiCheckbox v-model="autoCheck" :switch="true" size="sm" />
+        <UiCheckbox v-model="autoCheck" :switch="true" size="sm" />
       </div>
       <div class="flex items-center justify-between">
         <div>
@@ -27,17 +29,15 @@
       <div v-else-if="status === 'not-available'" class="text-xs text-neutral-400">
         Aucune mise à jour disponible.
       </div>
-      <div v-else-if="status === 'error'" class="text-xs text-red-400">
-        Échec: {{ errorMsg }}
-      </div>
+      <div v-else-if="status === 'error'" class="text-xs text-red-400">Échec: {{ errorMsg }}</div>
     </div>
   </section>
 </template>
 <script setup lang="ts">
 import UiButton from '@components/ui/buttons/UiButton.vue';
 import UiCheckbox from '@components/ui/input/UiCheckbox.vue';
-import { useUpdater } from '@composables/useUpdater';
 import { useSettings } from '@composables/useSettings';
+import { useUpdater } from '@composables/useUpdater';
 import { watch } from 'vue';
 
 const { checkNow, status, available, errorMsg, autoCheckOnStartup: autoCheck } = useUpdater();

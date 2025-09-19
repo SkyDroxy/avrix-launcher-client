@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..', '..'); // legacy monorepo root (may not exist after split)
-const tauriDir = path.resolve(__dirname, '..');   // launcher-tauri root (or new repo root)
+const tauriDir = path.resolve(__dirname, '..'); // launcher-tauri root (or new repo root)
 
 // Tauri output (release) default path
 const releaseDir = path.join(tauriDir, 'src-tauri', 'target', 'release');
@@ -19,7 +19,10 @@ if (!fs.existsSync(releaseDir)) {
 }
 
 if (!fs.existsSync(path.join(root, 'installer'))) {
-  console.warn('[copy-exe] Legacy installer path not found, skipping copy (standalone repo?):', path.join(root, 'installer'));
+  console.warn(
+    '[copy-exe] Legacy installer path not found, skipping copy (standalone repo?):',
+    path.join(root, 'installer')
+  );
   process.exit(0);
 }
 

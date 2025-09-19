@@ -12,7 +12,8 @@
       <span
         class="uppercase tracking-tight"
         :class="autoFollow ? 'text-indigo-300' : 'text-neutral-400'"
-      >auto</span>
+        >auto</span
+      >
     </div>
     <UiButton size="xs" variant="ghost" @click="$emit('copy')" title="Copier tout">
       <Icon name="mingcute:copy-2-fill" :width="16" />

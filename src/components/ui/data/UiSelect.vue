@@ -1,9 +1,10 @@
 <template>
   <div class="relative inline-block text-[11px]" ref="root" @keydown.stop.prevent="onKey($event)">
     <button
+      ref="btn"
       type="button"
-      class="flex items-center gap-1 pl-2 pr-6 h-7 rounded-md border border-neutral-700/70 bg-neutral-800/70 text-neutral-200 hover:bg-neutral-700/70 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:ring-offset-0 transition select-none relative"
-      :class="disabled ? 'opacity-50 cursor-not-allowed' : ''"
+      class="flex items-center gap-1 pl-2 pr-6 h-7 rounded-md border border-neutral-700/70 bg-neutral-800/70 text-neutral-200 hover:bg-neutral-700/70 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:ring-offset-0 transition select-none relative min-w-[160px]"
+      :class="[rootClass, disabled ? 'opacity-50 cursor-not-allowed' : '']"
       :disabled="disabled"
       @click="toggle"
       :aria-expanded="open ? 'true' : 'false'"
@@ -19,37 +20,45 @@
       />
     </button>
     <transition name="fade-scale">
-      <ul
-        v-if="open"
-        class="absolute z-50 mt-1 min-w-[160px] max-h-60 overflow-auto rounded-md border border-neutral-700/70 bg-neutral-900/95 backdrop-blur-sm shadow-[0_4px_20px_-4px_rgba(0,0,0,0.6)] py-1 focus:outline-none select-none ring-1 ring-black/40"
-        role="listbox"
-        :aria-activedescendant="activeId"
-        @mousedown.prevent
-      >
-        <li
-          v-for="(opt, idx) in options"
-          :key="opt.value"
-          :id="idPrefix + '-' + idx"
-          @click="select(opt)"
-          class="px-3 py-1.5 cursor-pointer flex items-center justify-between gap-3 text-[11px]"
-          :class="[
-            idx === focusIndex
-              ? 'bg-indigo-600/20 text-neutral-100'
-              : 'text-neutral-300 hover:bg-neutral-700/40',
-            modelValue === opt.value && idx !== focusIndex ? 'text-indigo-300' : '',
-          ]"
-          role="option"
-          :aria-selected="modelValue === opt.value"
+      <Teleport to="body">
+        <ul
+          v-if="open"
+          ref="menuRef"
+          class="fixed z-[9999] min-w-[160px] max-h-60 overflow-auto rounded-md border border-neutral-700/70 bg-neutral-900/95 backdrop-blur-sm shadow-[0_4px_20px_-4px_rgba(0,0,0,0.6)] py-1 focus:outline-none select-none ring-1 ring-black/40"
+          role="listbox"
+          :aria-activedescendant="activeId"
+          :style="{
+            top: menuPos.top + 'px',
+            left: menuPos.left + 'px',
+            minWidth: menuPos.width + 'px',
+          }"
+          @mousedown.prevent
         >
-          <span class="truncate">{{ opt.label }}</span>
-          <Icon
-            v-if="modelValue === opt.value"
-            name="mingcute:check-fill"
-            :width="14"
-            class="text-indigo-300 opacity-90"
-          />
-        </li>
-      </ul>
+          <li
+            v-for="(opt, idx) in options"
+            :key="opt.value"
+            :id="idPrefix + '-' + idx"
+            @click="select(opt)"
+            class="px-3 py-1.5 cursor-pointer flex items-center justify-between gap-3 text-[11px]"
+            :class="[
+              idx === focusIndex
+                ? 'bg-indigo-600/20 text-neutral-100'
+                : 'text-neutral-300 hover:bg-neutral-700/40',
+              modelValue === opt.value && idx !== focusIndex ? 'text-indigo-300' : '',
+            ]"
+            role="option"
+            :aria-selected="modelValue === opt.value"
+          >
+            <span class="truncate">{{ opt.label }}</span>
+            <Icon
+              v-if="modelValue === opt.value"
+              name="mingcute:check-fill"
+              :width="14"
+              class="text-indigo-300 opacity-90"
+            />
+          </li>
+        </ul>
+      </Teleport>
     </transition>
   </div>
 </template>
@@ -70,6 +79,7 @@ const props = withDefaults(
     label?: string;
     placeholder?: string;
     disabled?: boolean;
+    rootClass?: string | Record<string, boolean> | Array<string | Record<string, boolean>>;
   }>(),
   { disabled: false }
 );
@@ -77,8 +87,12 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>();
 
 const open = ref(false);
 const root = ref<HTMLElement | null>(null);
+const btn = ref<HTMLElement | null>(null);
+const menuRef = ref<HTMLElement | null>(null);
 const focusIndex = ref(-1);
 const idPrefix = 'sel-' + Math.random().toString(36).slice(2);
+const menuPos = ref({ top: 0, left: 0, width: 0 });
+const placement = ref<'bottom' | 'top'>('bottom');
 
 const activeOption = computed(() => props.options.find((o) => o.value === props.modelValue));
 const activeId = computed(() => {
@@ -91,14 +105,17 @@ function toggle() {
   open.value = !open.value;
   if (open.value) {
     setTimeout(() => {
+      updateMenuPos();
       const idx = props.options.findIndex((o) => o.value === props.modelValue);
       focusIndex.value = idx >= 0 ? idx : 0;
       scrollFocusedIntoView();
+      addGlobalListeners();
     }, 0);
   }
 }
 function close() {
   open.value = false;
+  removeGlobalListeners();
 }
 function select(opt: Option) {
   emit('update:modelValue', opt.value);
@@ -108,9 +125,33 @@ function onClickOutside(e: Event) {
   if (!root.value) return;
   const target = e.target as Node | null;
   if (!target) return;
-  if (!root.value.contains(target)) {
+  if (!root.value.contains(target) && !(menuRef.value && menuRef.value.contains(target as Node))) {
     close();
   }
+}
+function updateMenuPos() {
+  const r = btn.value?.getBoundingClientRect();
+  if (!r) return;
+  const scrollX = window.scrollX || document.documentElement.scrollLeft;
+  const scrollY = window.scrollY || document.documentElement.scrollTop;
+  // Compute available space
+  const viewportH = window.innerHeight || document.documentElement.clientHeight;
+  const below = viewportH - r.bottom;
+  const above = r.top;
+  // Estimate menu height (fallback to 200px max height)
+  const estHeight = Math.min(menuRef.value?.scrollHeight || 200, 240);
+  placement.value = below >= estHeight + 8 || below >= above ? 'bottom' : 'top';
+  const top =
+    placement.value === 'bottom' ? r.bottom + scrollY + 4 : r.top + scrollY - estHeight - 4;
+  menuPos.value = { top, left: r.left + scrollX, width: r.width };
+}
+function addGlobalListeners() {
+  window.addEventListener('scroll', updateMenuPos, true);
+  window.addEventListener('resize', updateMenuPos);
+}
+function removeGlobalListeners() {
+  window.removeEventListener('scroll', updateMenuPos, true);
+  window.removeEventListener('resize', updateMenuPos);
 }
 function onKey(e: KeyboardEvent) {
   if (props.disabled) return;
@@ -183,10 +224,15 @@ watch(
 onMounted(() => {
   document.addEventListener('mousedown', onClickOutside as EventListener);
   document.addEventListener('focusin', onClickOutside as EventListener);
+  window.addEventListener('avrix:close-all-selects', close as EventListener);
+  window.addEventListener('popstate', close as EventListener);
 });
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onClickOutside as EventListener);
   document.removeEventListener('focusin', onClickOutside as EventListener);
+  removeGlobalListeners();
+  window.removeEventListener('avrix:close-all-selects', close as EventListener);
+  window.removeEventListener('popstate', close as EventListener);
 });
 </script>
 <style scoped>

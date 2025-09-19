@@ -17,13 +17,8 @@ jobs:
   release:
     runs-on: windows-latest
     env:
-      # Required by tauri signing at build time
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      # Updater runtime config (optional if set in tauri.conf.json)
-      AVRIX_UPDATER_ENDPOINT: https://github.com/SkyDroxy/avrix-launcher-client/releases/latest/download/latest.json
-      AVRIX_UPDATER_PUBKEY: "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ0MDZEQzhEREQwQkEwNUMKUldSY29BdmRqZHdHMUVaR1ZFZWY3ZWJ6NnZ3T3Q5SU1GRGRXSVVOLzAxVGVtMTR4c1lyYmhGeEQK"
-
+      AVRIX_UPDATER_ENDPOINT: 'https://s3.storage.skymunt.com/avrix-launcher/latest.json'
+      AVRIX_UPDATER_PUBKEY: 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ0MDZEQzhEREQwQkEwNUMKUldSY29BdmRqZHdHMUVaR1ZFZWY3ZWJ6NnZ3T3Q5SU1GRGRXSVVOLzAxVGVtMTR4c1lyYmhGeEQK'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -89,6 +84,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: --bundles nsis
           tagName: v${{ env.NEW_VERSION }}
@@ -98,3 +95,71 @@ jobs:
             - Windows installer & updater artifacts (including latest.json) included.
           releaseDraft: false
           prerelease: false
+
+      - name: Prepare latest.json for S3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ver = "$env:NEW_VERSION"
+
+          # Locate NSIS installer and its signature
+          $bundleRoot = Get-ChildItem -Recurse -Directory -Path "src-tauri/target" -Filter bundle | Select-Object -First 1
+          if (-not $bundleRoot) { throw "Bundle directory not found under src-tauri/target" }
+          $nsisDir = Get-ChildItem -Recurse -Directory -Path $bundleRoot.FullName -Filter nsis | Select-Object -First 1
+          if (-not $nsisDir) { throw "NSIS bundle directory not found" }
+          $installer = Get-ChildItem -Path $nsisDir.FullName -Filter "*${ver}*setup*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer not found for version $ver" }
+
+          $sigPath = "$($installer.FullName).sig"
+          if (-not (Test-Path $sigPath)) {
+            $sigPath = Get-ChildItem -Path $nsisDir.FullName -Filter "*.sig" | Select-Object -First 1 | ForEach-Object { $_.FullName }
+          }
+          if (-not (Test-Path $sigPath)) { throw "Signature file (.sig) not found" }
+
+          $sig = (Get-Content $sigPath -Raw).Trim()
+          $pubDate = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+          $assetName = $installer.Name
+
+          $jsonObj = [ordered]@{
+            version   = $ver
+            notes     = ""
+            pub_date  = $pubDate
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = $sig
+                url       = "https://s3.storage.skymunt.com/avrix-launcher/v$ver/$assetName"
+              }
+            }
+          }
+          $json = $jsonObj | ConvertTo-Json -Depth 5
+          Set-Content -Path latest.json -Value $json -Encoding UTF8
+
+          # Expose paths for subsequent step
+          echo "INSTALLER_PATH=$($installer.FullName)" >> $env:GITHUB_ENV
+          echo "LATEST_JSON_PATH=$((Resolve-Path latest.json).Path)" >> $env:GITHUB_ENV
+          echo "SIG_PATH=$sigPath" >> $env:GITHUB_ENV
+
+      - name: Upload artifacts to MinIO (S3)
+        shell: pwsh
+        env:
+          MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $mc = "$PWD/mc.exe"
+          Invoke-WebRequest -Uri "https://dl.min.io/client/mc/release/windows-amd64/mc.exe" -OutFile $mc
+
+          & $mc alias set s3 $env:MINIO_ENDPOINT $env:MINIO_ACCESS_KEY $env:MINIO_SECRET_KEY
+
+          # Ensure bucket exists and is public-read
+          try { & $mc mb -p s3/avrix-launcher } catch { }
+          & $mc anonymous set download s3/avrix-launcher
+
+          $ver = "$env:NEW_VERSION"
+          $dest = "s3/avrix-launcher/v$ver/"
+          & $mc cp "$env:INSTALLER_PATH" $dest
+          & $mc cp "$env:SIG_PATH" $dest
+
+          # Publish latest.json at bucket root
+          & $mc cp "$env:LATEST_JSON_PATH" "s3/avrix-launcher/latest.json"

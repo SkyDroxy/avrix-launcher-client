@@ -27,6 +27,13 @@
         @activate="go"
       />
       <SidebarItem
+        label="Versions"
+        icon="mingcute:version-fill"
+        section="versions"
+        :current="routeName"
+        @activate="go"
+      />
+      <SidebarItem
         label="Logs"
         icon="mingcute:terminal-box-fill"
         section="logs"

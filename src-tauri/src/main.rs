@@ -6,6 +6,7 @@ mod metadata;
 mod models;
 mod store;
 mod util;
+mod versions;
 mod workshop;
 
 use crate::logger::info;
@@ -107,6 +108,10 @@ fn get_settings_path() -> Result<String, String> {
 fn main() {
     info("main", "Avrix Launcher starting up");
     tauri::Builder::default()
+        .plugin(tauri_plugin_stronghold::Builder::new(|_| {
+            let pass = std::env::var("STRONGHOLD_PASSWORD").unwrap_or_else(|_| "avrix-stronghold".to_string());
+            pass.into_bytes()
+        }).build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -146,7 +151,16 @@ fn main() {
             validate_plugin_local,
             validate_plugin_from_url,
             delete_plugin,
-            get_settings_path
+            get_settings_path,
+            versions::list_versions,
+            versions::list_available_versions,
+            versions::install_version_local,
+            versions::install_version_from_url,
+            versions::install_version_from_release,
+            versions::repair_version_from_release,
+            versions::select_version,
+            versions::get_selected_version,
+            versions::delete_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

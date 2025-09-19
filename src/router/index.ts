@@ -3,6 +3,7 @@ import { createRouter, createWebHashHistory, RouteRecordRaw } from 'vue-router';
 
 // Lazy views (keep same component splitting semantics)
 const PluginsView = () => import('@components/plugins/PluginsView.vue');
+const VersionsView = () => import('@components/versions/VersionsView.vue');
 const LogsView = () => import('@components/logs/LogsView.vue');
 const PlayTestView = () => import('@components/playtest/PlayTestView.vue');
 
@@ -15,6 +16,7 @@ export const routes: RouteRecordRaw[] = [
     meta: { label: 'Panneau de lancement' },
   },
   { path: '/plugins', name: 'plugins', component: PluginsView, meta: { label: 'Plugins' } },
+  { path: '/versions', name: 'versions', component: VersionsView, meta: { label: 'Versions' } },
   { path: '/logs', name: 'logs', component: LogsView, meta: { label: 'Logs' } },
   {
     path: '/playtest',

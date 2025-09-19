@@ -1,9 +1,10 @@
-import { ref, watch, shallowRef, markRaw } from 'vue';
-import { check, type Update } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { useToasts } from './useToasts';
+import { relaunch } from '@tauri-apps/plugin-process';
+import { check, type Update } from '@tauri-apps/plugin-updater';
+import { ref, watch, shallowRef, markRaw } from 'vue';
+
 import { useSettings } from './useSettings';
+import { useToasts } from './useToasts';
 
 export type UpdateStatus =
   | 'idle'
@@ -42,7 +43,12 @@ export function useUpdater() {
   const { info: toastInfo, error: toastError, success: toastSuccess } = useToasts();
 
   async function checkNow(opts?: { silent?: boolean }) {
-    if (status.value === 'checking' || status.value === 'downloading' || status.value === 'installing') return null;
+    if (
+      status.value === 'checking' ||
+      status.value === 'downloading' ||
+      status.value === 'installing'
+    )
+      return null;
     status.value = 'checking';
     errorMsg.value = null;
     lastCheckAt.value = Date.now();
@@ -112,7 +118,7 @@ export function useUpdater() {
       return true;
     } catch (e: any) {
       status.value = 'error';
-      const msg = (e && (e.message || String(e))) || 'Échec de l\'installation';
+      const msg = (e && (e.message || String(e))) || "Échec de l'installation";
       errorMsg.value = msg;
       toastError(`Échec de la mise à jour: ${msg}`);
       return false;

@@ -88,7 +88,6 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue';
 import iconImage from '@assets/AvrixLauncher.ico';
 import RouteBreadcrumb from '@components/navigation/RouteBreadcrumb.vue';
 import SettingsModal from '@components/settings/SettingsModal.vue';
@@ -96,6 +95,7 @@ import UiButton from '@components/ui/buttons/UiButton.vue';
 import { useSettingsModal } from '@composables/useSettingsModal';
 import { useUpdater } from '@composables/useUpdater';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 
 const iconSrc = ref(iconImage);
 function detectInitialTheme(): 'dark' | 'light' {

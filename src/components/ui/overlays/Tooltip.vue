@@ -2,10 +2,8 @@
   <span
     ref="triggerRef"
     :class="['relative', blockTarget ? 'block w-full' : 'inline-flex']"
-    @mouseenter="onEnter"
-    @mouseleave="onLeave"
-    @focusin="onEnter"
-    @focusout="onLeave"
+    @pointerenter="onEnter"
+    @pointerleave="onLeave"
   >
     <slot />
     <teleport to="body" v-if="mounted">
@@ -20,7 +18,9 @@
             class="rounded-md px-2.5 py-1.5 text-[11px] font-medium leading-snug shadow-lg border bg-neutral-800/95 backdrop-blur-sm border-neutral-600/60 text-neutral-50 flex items-center gap-1"
           >
             <slot name="icon" />
-            <span class="whitespace-nowrap"><slot name="content">{{ text }}</slot></span>
+            <span class="whitespace-nowrap"
+              ><slot name="content">{{ text }}</slot></span
+            >
           </div>
         </div>
       </transition>
@@ -51,12 +51,19 @@ const visible = ref(false);
 const mounted = ref(false);
 let openTimer: number | null = null;
 let closeTimer: number | null = null;
+let boundPointerDown: ((e: Event) => void) | null = null;
+let hoverRaf = 0;
 
 function clearTimers() {
   if (openTimer) window.clearTimeout(openTimer);
   if (closeTimer) window.clearTimeout(closeTimer);
   openTimer = null;
   closeTimer = null;
+}
+
+function hideNow() {
+  clearTimers();
+  visible.value = false;
 }
 
 function onEnter() {
@@ -122,6 +129,17 @@ function updatePosition() {
 }
 
 function onWindowEvents() {
+  const el = triggerRef.value;
+  if (!el || !el.isConnected) {
+    if (visible.value) hideNow();
+    return;
+  }
+  // If the element is not hovered anymore, hide defensively
+  const stillHover = typeof el.matches === 'function' && el.matches(':hover');
+  if (visible.value && !stillHover) {
+    hideNow();
+    return;
+  }
   if (visible.value) updatePosition();
 }
 
@@ -129,15 +147,51 @@ onMounted(() => {
   mounted.value = true;
   window.addEventListener('scroll', onWindowEvents, true);
   window.addEventListener('resize', onWindowEvents, true);
+  // Hide on global pointer interactions (e.g., opening a modal)
+  boundPointerDown = (e: Event) => {
+    const el = triggerRef.value;
+    if (!el) return;
+    const target = e.target as Node | null;
+    if (visible.value && target && !el.contains(target)) hideNow();
+  };
+  document.addEventListener('pointerdown', boundPointerDown, true);
+  // Hide when tab/window loses focus or page visibility changes
+  window.addEventListener('blur', hideNow);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hideNow();
+  });
 });
 onBeforeUnmount(() => {
   clearTimers();
   window.removeEventListener('scroll', onWindowEvents, true);
   window.removeEventListener('resize', onWindowEvents, true);
+  if (boundPointerDown) document.removeEventListener('pointerdown', boundPointerDown, true);
+  window.removeEventListener('blur', hideNow);
+  // The anonymous visibilitychange listener can't be removed; acceptable since component is unmounted
 });
 
 watch(visible, (v) => {
-  if (v) nextTick(updatePosition);
+  if (v) {
+    nextTick(() => {
+      updatePosition();
+      // Guard: only keep tooltip while the trigger is actually hovered
+      const loop = () => {
+        const el = triggerRef.value;
+        if (!visible.value) return; // stopped elsewhere
+        if (!el || !el.isConnected || !(typeof el.matches === 'function' && el.matches(':hover'))) {
+          hideNow();
+          return;
+        }
+        updatePosition();
+        hoverRaf = window.requestAnimationFrame(loop);
+      };
+      if (hoverRaf) cancelAnimationFrame(hoverRaf);
+      hoverRaf = window.requestAnimationFrame(loop);
+    });
+  } else {
+    if (hoverRaf) cancelAnimationFrame(hoverRaf);
+    hoverRaf = 0;
+  }
 });
 </script>
 <style scoped>

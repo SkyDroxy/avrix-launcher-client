@@ -77,10 +77,10 @@ export function useSettings() {
         await s.set('memPreset', memPreset.value);
       }
 
-  const ac = (await s.get<boolean>('autoCheckUpdates')) as boolean | null;
-  if (typeof ac === 'boolean') autoCheckUpdates.value = ac;
+      const ac = (await s.get<boolean>('autoCheckUpdates')) as boolean | null;
+      if (typeof ac === 'boolean') autoCheckUpdates.value = ac;
 
-  await s.save();
+      await s.save();
     } catch (e) {
       // ignore; use defaults
       if (!memoryMB.value) memoryMB.value = 3072;

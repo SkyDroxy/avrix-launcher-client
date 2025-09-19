@@ -14,7 +14,7 @@
         @error="onImgError"
         @load="onImgLoad"
       />
-      <Icon v-else name="mingcute:puzzle-fill" :width="18" class="opacity-60" />
+      <Icon v-else name="mingcute:plugin-2-fill" :width="58" class="opacity-60" />
     </div>
     <!-- Content -->
     <div class="min-w-0 flex-1">
@@ -58,7 +58,9 @@
         </UiButton>
       </div>
       <div class="flex items-center justify-between opacity-60 text-[10px] mt-1">
-        <span v-if="plugin.author" class="truncate" :title="plugin.author"><Icon name="mingcute:user-4-fill" :width="14" /> {{ plugin.author }}</span>
+        <span v-if="plugin.author" class="truncate" :title="plugin.author"
+          ><Icon name="mingcute:user-4-fill" :width="14" /> {{ plugin.author }}</span
+        >
         <span v-else class="italic text-neutral-500">Auteur ?</span>
         <UiBadge v-if="plugin.environment" variant="gray" size="xs" class="uppercase tracking-wide">
           {{ plugin.environment }}
@@ -86,9 +88,6 @@ const imgSrc = ref<string | null>(null);
 const expanded = ref(false);
 const showToggle = computed(() => (props.plugin.description || '').length > 140);
 
-// Accepted sizes 1:1 only
-const ACCEPTED = new Set([16, 32, 64, 128, 256, 512]);
-
 watchEffect(() => {
   imgSrc.value = props.plugin.image || props.plugin.imageUrl || null;
 });
@@ -102,11 +101,8 @@ function onImgError(e: Event) {
 function onImgLoad(e: Event) {
   const el = e.target as HTMLImageElement;
   if (!el) return;
-  const w = el.naturalWidth;
-  const h = el.naturalHeight;
-  if (w !== h || !ACCEPTED.has(w)) {
-    imgSrc.value = null; // fallback to icon if not 1:1 or size not allowed
-  }
+  // Accept any image dimensions; object-cover will crop to a square view.
+  // If you want to enforce strict 1:1 only, re-enable a tolerant check here.
 }
 </script>
 <style scoped>

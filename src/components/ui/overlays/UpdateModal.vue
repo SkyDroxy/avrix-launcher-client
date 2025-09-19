@@ -1,5 +1,11 @@
 <template>
-  <BaseModal v-model="open" width="md" placement="center" :closable="true" :close-on-backdrop="true">
+  <BaseModal
+    v-model="open"
+    width="md"
+    placement="center"
+    :closable="true"
+    :close-on-backdrop="true"
+  >
     <template #title>
       <div class="flex items-center gap-2">
         <Icon name="mingcute:refresh-2-fill" :width="18" />
@@ -8,8 +14,12 @@
     </template>
     <div class="space-y-3">
       <div class="text-sm text-neutral-300">
-        <div v-if="upd">Version: <b>v{{ upd.version }}</b></div>
-        <div class="text-xs text-neutral-400 whitespace-pre-line" v-if="upd?.body">{{ upd.body }}</div>
+        <div v-if="upd">
+          Version: <b>v{{ upd.version }}</b>
+        </div>
+        <div class="text-xs text-neutral-400 whitespace-pre-line" v-if="upd?.body">
+          {{ upd.body }}
+        </div>
       </div>
       <div v-if="status === 'downloading'" class="space-y-1">
         <div class="text-xs text-neutral-400">Téléchargement… {{ percent }}%</div>
@@ -24,24 +34,30 @@
     <template #footer>
       <div class="flex items-center gap-2 justify-end">
         <UiButton variant="ghost" @click="close">Plus tard</UiButton>
-        <UiButton :disabled="status === 'downloading' || status === 'installing'" @click="onInstall">
+        <UiButton
+          :disabled="status === 'downloading' || status === 'installing'"
+          @click="onInstall"
+        >
           Installer & redémarrer
         </UiButton>
       </div>
     </template>
   </BaseModal>
-  
 </template>
 <script setup lang="ts">
-import BaseModal from './BaseModal.vue';
-import UiButton from '@components/ui/buttons/UiButton.vue';
 import Icon from '@components/common/Icon.vue';
-import { computed } from 'vue';
+import UiButton from '@components/ui/buttons/UiButton.vue';
 import { useUpdater } from '@composables/useUpdater';
+import { computed } from 'vue';
+
+import BaseModal from './BaseModal.vue';
 
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>();
-const open = computed({ get: () => props.modelValue, set: (v: boolean) => emit('update:modelValue', v) });
+const open = computed({
+  get: () => props.modelValue,
+  set: (v: boolean) => emit('update:modelValue', v),
+});
 
 const { available: update, status, errorMsg, progress, downloadAndInstall } = useUpdater();
 const upd = computed(() => update.value);
@@ -59,5 +75,4 @@ async function onInstall() {
 }
 </script>
 
-<style scoped>
-</style>
+<style scoped></style>

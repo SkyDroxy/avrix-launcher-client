@@ -1,9 +1,73 @@
 use crate::logger::{emit_app_log, info, warn};
 use anyhow::Result;
+use base64::Engine as _;
 use std::io::Read;
 use std::{fs, path::PathBuf};
 use tauri::{Emitter, Window};
 use zip::ZipArchive;
+
+// Allowed image size range (in bytes)
+const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024; // 5 MiB
+
+fn guess_mime_from_ext(name: &str) -> &'static str {
+    let lower = name.to_lowercase();
+    if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower.ends_with(".gif") {
+        "image/gif"
+    } else if lower.ends_with(".webp") {
+        "image/webp"
+    } else if lower.ends_with(".svg") {
+        // Many UIs won't render data:image/svg+xml without proper encoding; prefer raster.
+        "image/svg+xml"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+fn data_url_from_bytes(name: &str, bytes: &[u8]) -> String {
+    let mime = guess_mime_from_ext(name);
+    let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+    format!("data:{};base64,{}", mime, b64)
+}
+
+fn is_url(s: &str) -> bool {
+    let sl = s.to_lowercase();
+    sl.starts_with("http://") || sl.starts_with("https://")
+}
+
+fn is_data_url(s: &str) -> bool {
+    s.starts_with("data:")
+}
+
+fn is_size_allowed(bytes: usize) -> bool {
+    bytes <= MAX_IMAGE_BYTES
+}
+
+// Estimate decoded payload size of a base64 data URL. Returns None if not base64 or malformed.
+fn data_url_payload_len_bytes(url: &str) -> Option<usize> {
+    let lower = url.to_ascii_lowercase();
+    if !lower.starts_with("data:") {
+        return None;
+    }
+    let comma_idx = url.find(',')?;
+    let header = &lower[..comma_idx];
+    if !header.contains(";base64") {
+        return None;
+    }
+    let b64 = &url[comma_idx + 1..];
+    let len = b64.len();
+    if len == 0 {
+        return Some(0);
+    }
+    if len % 4 != 0 {
+        return None;
+    }
+    let padding = b64.chars().rev().take_while(|c| *c == '=').count();
+    Some(len / 4 * 3 - padding)
+}
 
 pub fn find_game_root(start: &PathBuf) -> Option<PathBuf> {
     let mut cur = start.clone();
@@ -90,13 +154,102 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
     if core_jar.exists() {
         emit("Avrix-Core.jar found, extracting metadata...");
         if let Ok(meta_fs) = fs::metadata(&core_jar) {
-            if let Ok(raw) = metadata::extract_metadata_from_jar(&core_jar) {
+            if let Ok((raw, core_base)) = metadata::extract_metadata_with_base_from_jar(&core_jar) {
                 let modified = meta_fs
                     .modified()
                     .ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
+                emit(&format!(
+                    "[core] image metadata: image={:?} imageUrl={:?}",
+                    raw.image, raw.image_url
+                ));
+                let mut image_data: Option<String> = None;
+                if let Some(img_path) = raw.image.as_deref() {
+                    if is_data_url(img_path) {
+                        match data_url_payload_len_bytes(img_path) {
+                            Some(sz) if is_size_allowed(sz) => {
+                                emit(&format!(
+                                    "[core] image is data URL ({} bytes) — allowed ({} bytes)",
+                                    sz, MAX_IMAGE_BYTES
+                                ));
+                                image_data = Some(img_path.to_string());
+                            }
+                            Some(sz) => {
+                                emit(&format!("[core] image is data URL ({} bytes) — rejected (allowed {} bytes)", sz, MAX_IMAGE_BYTES));
+                            }
+                            None => {
+                                emit(
+                                    "[core] image is data URL but not base64/malformed — rejecting",
+                                );
+                            }
+                        }
+                    } else if !is_url(img_path) {
+                        let base = core_base.as_deref().unwrap_or("");
+                        let img_rel = img_path.trim_start_matches('/');
+                        let full = if base.is_empty() {
+                            img_rel.to_string()
+                        } else {
+                            format!("{}/{}", base.trim_end_matches('/'), img_rel)
+                        };
+                        emit(&format!(
+                            "[core] image is a JAR path: {} — baseDir='{}' fullCandidate='{}' — scanning entries",
+                            img_path, base, full
+                        ));
+                        if let Ok(file) = std::fs::File::open(&core_jar) {
+                            if let Ok(mut zip) = ZipArchive::new(file) {
+                                for zi in 0..zip.len() {
+                                    if let Ok(mut zf) = zip.by_index(zi) {
+                                        let name = zf.name().to_string();
+                                        if name.ends_with('/') {
+                                            continue;
+                                        }
+                                        // Prefer exact match against full candidate, then fallback
+                                        if name.eq_ignore_ascii_case(&full)
+                                            || name.eq_ignore_ascii_case(img_rel)
+                                            || name
+                                                .to_lowercase()
+                                                .ends_with(&img_rel.to_lowercase())
+                                        {
+                                            let mut buf = Vec::new();
+                                            if std::io::Read::read_to_end(&mut zf, &mut buf).is_ok()
+                                            {
+                                                let size = buf.len();
+                                                if is_size_allowed(size) {
+                                                    let mime = guess_mime_from_ext(&name);
+                                                    let data_url = data_url_from_bytes(&name, &buf);
+                                                    emit(&format!(
+                                                        "[core] image resolved: {} ({} bytes, mime {}, dataUrlLen {}) — allowed ({} bytes)",
+                                                        name,
+                                                        size,
+                                                        mime,
+                                                        data_url.len(),
+                                                        MAX_IMAGE_BYTES
+                                                    ));
+                                                    image_data = Some(data_url);
+                                                } else {
+                                                    emit(&format!(
+                                                        "[core] image resolved but rejected due to size: {} ({} bytes; allowed {} bytes)",
+                                                        name,
+                                                        size,
+                                                        MAX_IMAGE_BYTES
+                                                    ));
+                                                }
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                                if image_data.is_none() {
+                                    emit(&format!("[core] image path not found in JAR: base='{}' rel='{}' full='{}'", core_base.unwrap_or_default(), img_path, full));
+                                }
+                            }
+                        }
+                    } else {
+                        emit(&format!("[core] image is URL: {} (size cannot be pre-validated; will use imageUrl)", img_path));
+                    }
+                }
                 out.push(PluginEntry {
                     name: "Avrix-Core.jar".into(),
                     size_kb: (meta_fs.len() / 1024).max(1),
@@ -109,8 +262,20 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
                     id: raw.id.clone().or(Some("avrix-core".into())),
                     description: raw.description.clone(),
                     dependencies: raw.dependencies.clone(),
-                    image: raw.image.clone(),
-                    image_url: raw.image_url.clone(),
+                    image: image_data,
+                    image_url: raw
+                        .image
+                        .as_ref()
+                        .filter(|s| is_url(s))
+                        .cloned()
+                        .or_else(|| {
+                            if let Some(u) = raw.image_url.clone() {
+                                emit(&format!("[core] using imageUrl from metadata: {}", u));
+                                Some(u)
+                            } else {
+                                None
+                            }
+                        }),
                     internal: Some(false),
                     parent_id: None,
                 });
@@ -143,6 +308,120 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
                                                 "   -> Register internal plugin: {}",
                                                 id
                                             ));
+                                            // Try to resolve internal image (embedded reference or URL)
+                                            let mut image: Option<String> = None;
+                                            let mut image_url: Option<String> =
+                                                raw_ip.image_url.clone();
+                                            emit(&format!(
+                                                "[internal:{}] image metadata: image={:?} imageUrl={:?}",
+                                                id, raw_ip.image, raw_ip.image_url
+                                            ));
+                                            if let Some(img_ref) = raw_ip.image.as_deref() {
+                                                if is_data_url(img_ref) {
+                                                    match data_url_payload_len_bytes(img_ref) {
+                                                        Some(sz) if is_size_allowed(sz) => {
+                                                            emit(&format!("[internal:{}] image is data URL ({} bytes) — allowed ({} bytes)", id, sz, MAX_IMAGE_BYTES));
+                                                            image = Some(img_ref.to_string());
+                                                        }
+                                                        Some(sz) => {
+                                                            emit(&format!("[internal:{}] image is data URL ({} bytes) — rejected (allowed {} bytes)", id, sz, MAX_IMAGE_BYTES));
+                                                        }
+                                                        None => {
+                                                            emit(&format!("[internal:{}] image is data URL but not base64/malformed — rejecting", id));
+                                                        }
+                                                    }
+                                                } else if is_url(img_ref) {
+                                                    emit(&format!(
+                                                        "[internal:{}] image is URL: {}",
+                                                        id, img_ref
+                                                    ));
+                                                    image_url = Some(img_ref.to_string());
+                                                } else {
+                                                    // Compute base from YAML path where it was found
+                                                    let base = name
+                                                        .rfind('/')
+                                                        .map(|idx| &name[..idx])
+                                                        .unwrap_or("");
+                                                    let rel = img_ref.trim_start_matches('/');
+                                                    let full = if base.is_empty() {
+                                                        rel.to_string()
+                                                    } else {
+                                                        format!(
+                                                            "{}/{}",
+                                                            base.trim_end_matches('/'),
+                                                            rel
+                                                        )
+                                                    };
+                                                    emit(&format!(
+                                                        "[internal:{}] image is a JAR path: {} — baseDir='{}' fullCandidate='{}' — scanning core zip",
+                                                        id, img_ref, base, full
+                                                    ));
+                                                    if let Ok(file2) =
+                                                        std::fs::File::open(&core_jar)
+                                                    {
+                                                        if let Ok(mut zip2) = ZipArchive::new(file2)
+                                                        {
+                                                            for zj in 0..zip2.len() {
+                                                                if let Ok(mut zimg) =
+                                                                    zip2.by_index(zj)
+                                                                {
+                                                                    let zname =
+                                                                        zimg.name().to_string();
+                                                                    if zname.ends_with('/') {
+                                                                        continue;
+                                                                    }
+                                                                    if zname
+                                                                        .eq_ignore_ascii_case(&full)
+                                                                        || zname
+                                                                            .eq_ignore_ascii_case(
+                                                                                rel,
+                                                                            )
+                                                                        || zname
+                                                                            .to_lowercase()
+                                                                            .ends_with(
+                                                                                &rel.to_lowercase(),
+                                                                            )
+                                                                    {
+                                                                        let mut buf = Vec::new();
+                                                                        if std::io::Read::read_to_end(&mut zimg, &mut buf).is_ok() {
+                                                                            let size = buf.len();
+                                                                            if is_size_allowed(size) {
+                                                                                let mime = guess_mime_from_ext(&zname);
+                                                                                let data_url = data_url_from_bytes(&zname, &buf);
+                                                                                emit(&format!(
+                                                                                    "[internal:{}] image resolved: {} ({} bytes, mime {}, dataUrlLen {}) — allowed ({} bytes)",
+                                                                                    id,
+                                                                                    zname,
+                                                                                    size,
+                                                                                    mime,
+                                                                                    data_url.len(),
+                                                                                    MAX_IMAGE_BYTES
+                                                                                ));
+                                                                                image = Some(data_url);
+                                                                            } else {
+                                                                                emit(&format!(
+                                                                                    "[internal:{}] image resolved but rejected due to size: {} ({} bytes; allowed {} bytes)",
+                                                                                    id,
+                                                                                    zname,
+                                                                                    size,
+                                                                                    MAX_IMAGE_BYTES
+                                                                                ));
+                                                                            }
+                                                                        }
+                                                                        break;
+                                                                    }
+                                                                }
+                                                            }
+                                                            if image.is_none() {
+                                                                emit(&format!(
+                                                                    "[internal:{}] image path not found in core JAR: base='{}' rel='{}' full='{}'",
+                                                                    id, base, img_ref, full
+                                                                ));
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                             out.push(PluginEntry {
                                                 name: format!("{} (internal)", id),
                                                 size_kb: 0,
@@ -158,8 +437,8 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
                                                 id: Some(id.clone()),
                                                 description: raw_ip.description.clone(),
                                                 dependencies: raw_ip.dependencies.clone(),
-                                                image: raw_ip.image.clone(),
-                                                image_url: raw_ip.image_url.clone(),
+                                                image,
+                                                image_url,
                                                 internal: Some(true),
                                                 parent_id: raw_ip
                                                     .parent
@@ -205,7 +484,7 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
                         modified,
                         ..Default::default()
                     };
-                    if let Ok(m) = metadata::extract_metadata_from_jar(&p) {
+                    if let Ok((m, base)) = metadata::extract_metadata_with_base_from_jar(&p) {
                         emit(&format!("   -> Extracted metadata for {}", name));
                         entry.display_name = m.name.clone();
                         entry.version = m.version.clone();
@@ -215,8 +494,109 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
                         entry.id = m.id.clone();
                         entry.description = m.description.clone();
                         entry.dependencies = m.dependencies.clone();
-                        entry.image = m.image.clone();
-                        entry.image_url = m.image_url.clone();
+                        emit(&format!(
+                            "   -> [{}] image metadata: image={:?} imageUrl={:?} baseDir={:?}",
+                            name, m.image, m.image_url, base
+                        ));
+                        // If image is a path inside the JAR, extract it as data URL or pass URL/data URL
+                        if let Some(img_ref) = &m.image {
+                            if is_data_url(img_ref) {
+                                match data_url_payload_len_bytes(img_ref) {
+                                    Some(sz) if is_size_allowed(sz) => {
+                                        emit(&format!("   -> [{}] image is data URL ({} bytes) — allowed ({} bytes)", name, sz, MAX_IMAGE_BYTES));
+                                        entry.image = Some(img_ref.clone());
+                                    }
+                                    Some(sz) => {
+                                        emit(&format!("   -> [{}] image is data URL ({} bytes) — rejected (allowed {} bytes)", name, sz, MAX_IMAGE_BYTES));
+                                    }
+                                    None => {
+                                        emit(&format!("   -> [{}] image is data URL but not base64/malformed — rejecting", name));
+                                    }
+                                }
+                            } else if is_url(img_ref) {
+                                emit(&format!("   -> [{}] image is URL: {}", name, img_ref));
+                                entry.image_url = Some(img_ref.clone());
+                            } else {
+                                if let Ok(file) = std::fs::File::open(&p) {
+                                    if let Ok(mut zip) = ZipArchive::new(file) {
+                                        let base_s = base.unwrap_or_default();
+                                        let rel = img_ref.trim_start_matches('/');
+                                        let full = if base_s.is_empty() {
+                                            rel.to_string()
+                                        } else {
+                                            format!("{}/{}", base_s.trim_end_matches('/'), rel)
+                                        };
+                                        emit(&format!(
+                                            "   -> [{}] image is a JAR path: {} — baseDir='{}' fullCandidate='{}' — scanning entries",
+                                            name, img_ref, base_s, full
+                                        ));
+                                        for zi in 0..zip.len() {
+                                            if let Ok(mut zf) = zip.by_index(zi) {
+                                                let zname = zf.name().to_string();
+                                                if zname.ends_with('/') {
+                                                    continue;
+                                                }
+                                                if zname.eq_ignore_ascii_case(&full)
+                                                    || zname.eq_ignore_ascii_case(rel)
+                                                    || zname
+                                                        .to_lowercase()
+                                                        .ends_with(&rel.to_lowercase())
+                                                {
+                                                    let mut buf = Vec::new();
+                                                    if std::io::Read::read_to_end(&mut zf, &mut buf)
+                                                        .is_ok()
+                                                    {
+                                                        let size = buf.len();
+                                                        if is_size_allowed(size) {
+                                                            let mime = guess_mime_from_ext(&zname);
+                                                            let data_url =
+                                                                data_url_from_bytes(&zname, &buf);
+                                                            emit(&format!(
+                                                                "   -> [{}] image resolved: {} ({} bytes, mime {}, dataUrlLen {}) — allowed ({} bytes)",
+                                                                name,
+                                                                zname,
+                                                                size,
+                                                                mime,
+                                                                data_url.len(),
+                                                                MAX_IMAGE_BYTES
+                                                            ));
+                                                            entry.image = Some(data_url);
+                                                        } else {
+                                                            emit(&format!(
+                                                                "   -> [{}] image resolved but rejected due to size: {} ({} bytes; allowed {} bytes)",
+                                                                name,
+                                                                zname,
+                                                                size,
+                                                                MAX_IMAGE_BYTES
+                                                            ));
+                                                        }
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if entry.image.is_none() {
+                                            emit(&format!(
+                                                "   -> [{}] image path not found in JAR: base='{}' rel='{}' full='{}'",
+                                                name, base_s, img_ref, full
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            emit(&format!("   -> [{}] no image in metadata", name));
+                            entry.image = None;
+                        }
+                        if entry.image_url.is_none() {
+                            if let Some(u) = m.image_url.clone() {
+                                emit(&format!(
+                                    "   -> [{}] using imageUrl from metadata: {}",
+                                    name, u
+                                ));
+                                entry.image_url = Some(u);
+                            }
+                        }
                         entry.internal = m.internal;
                         entry.parent_id = m.parent.clone();
                     } else if let Some((disp, ver)) = parse_name_version_simple(name) {

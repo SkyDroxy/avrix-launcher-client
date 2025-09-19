@@ -3,7 +3,9 @@ use crate::models::RawMetadata;
 use anyhow::{anyhow, Result};
 use std::path::PathBuf;
 
-pub fn extract_metadata_from_jar(path: &PathBuf) -> Result<RawMetadata> {
+pub fn extract_metadata_with_base_from_jar(
+    path: &PathBuf,
+) -> Result<(RawMetadata, Option<String>)> {
     use std::io::Read;
     info(
         "metadata",
@@ -11,7 +13,7 @@ pub fn extract_metadata_from_jar(path: &PathBuf) -> Result<RawMetadata> {
     );
     let file = std::fs::File::open(path)?;
     let mut archive = zip::ZipArchive::new(file)?;
-    let mut found_raw: Option<(String, RawMetadata)> = None;
+    let mut found_raw: Option<(String, RawMetadata, Option<String>)> = None;
     let mut last_error: Option<anyhow::Error> = None;
     for i in 0..archive.len() {
         let mut f = archive.by_index(i)?;
@@ -24,7 +26,9 @@ pub fn extract_metadata_from_jar(path: &PathBuf) -> Result<RawMetadata> {
             }
             match serde_yaml::from_str::<RawMetadata>(&contents) {
                 Ok(raw) => {
-                    found_raw = Some((contents, raw));
+                    // base dir is the path prefix up to the last '/'
+                    let base = name.rfind('/').map(|idx| name[..idx].to_string());
+                    found_raw = Some((contents, raw, base));
                     break;
                 }
                 Err(e) => {
@@ -33,10 +37,10 @@ pub fn extract_metadata_from_jar(path: &PathBuf) -> Result<RawMetadata> {
             }
         }
     }
-    if let Some((raw_text, meta)) = found_raw {
+    if let Some((raw_text, meta, base)) = found_raw {
         let preview = raw_text.lines().take(6).collect::<Vec<_>>().join(" | ");
         info("metadata", &format!("metadata.yml loaded: {} ...", preview));
-        return Ok(meta);
+        return Ok((meta, base));
     }
     if let Some(err) = last_error {
         error("metadata", &format!("metadata.yml invalid: {}", err));
@@ -44,6 +48,11 @@ pub fn extract_metadata_from_jar(path: &PathBuf) -> Result<RawMetadata> {
     }
     error("metadata", "metadata.yml not found");
     Err(anyhow!("metadata.yml not found"))
+}
+
+// Back-compat convenience wrapper
+pub fn extract_metadata_from_jar(path: &PathBuf) -> Result<RawMetadata> {
+    extract_metadata_with_base_from_jar(path).map(|(m, _)| m)
 }
 
 pub fn is_valid_avrix_plugin(path: &PathBuf) -> bool {

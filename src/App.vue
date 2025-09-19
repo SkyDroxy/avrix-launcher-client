@@ -11,8 +11,8 @@
         </main>
       </div>
     </div>
-      <ToastContainer />
-      <UpdateModal v-model="showUpdate" />
+    <ToastContainer />
+    <UpdateModal v-model="showUpdate" />
   </div>
 </template>
 
@@ -20,10 +20,10 @@
 import Sidebar from '@components/layout/sidebar/Sidebar.vue';
 import TitleBar from '@components/layout/TitleBar.vue';
 import ToastContainer from '@components/ui/feedback/ToastContainer.vue';
-import { useRouter } from 'vue-router';
-import { onMounted, ref, watch } from 'vue';
-import { useUpdater } from '@composables/useUpdater';
 import UpdateModal from '@components/ui/overlays/UpdateModal.vue';
+import { useUpdater } from '@composables/useUpdater';
+import { onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
 const router = useRouter();
 const { checkNow, autoCheckOnStartup, status } = useUpdater();

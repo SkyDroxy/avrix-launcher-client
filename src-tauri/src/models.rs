@@ -91,3 +91,35 @@ pub struct MemoryInfo {
     pub total_mb: u64,
     pub available_mb: u64,
 }
+
+// Versions management
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionEntry {
+    pub id: String, // stable identifier (often equals version)
+    pub version: Option<String>,
+    pub display_name: Option<String>,
+    pub dir: String, // absolute path on disk
+    pub has_jre: bool,
+    pub modified: u64,
+    pub size_kb: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionsResult {
+    pub versions: Vec<VersionEntry>,
+    pub root: String,
+    pub selected_id: Option<String>,
+}
+
+// Available Avrix versions from GitHub releases
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AvailableVersion {
+    pub tag: String,
+    pub version: String,
+    pub core_url: String,
+    pub jre_url: Option<String>,
+    pub published_at: Option<String>,
+}

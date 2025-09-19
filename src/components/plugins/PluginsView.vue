@@ -40,53 +40,63 @@
         </div>
       </UiButton>
     </div>
-    <!-- Header: Rescan + Search + Sort + Logs (dev only) -->
-    <div class="flex items-center gap-3">
-      <UiButton size="sm" variant="ghost" class="px-3" :title="'Rescanner'" @click="refresh">
-        <div class="flex items-center gap-2">
-          <Icon name="mingcute:refresh-3-fill" :width="16" />
-          <span>Rescanner</span>
+    <!-- Header: Rescan + Search + Sort (left, spans main column) | Logs (right, above Env panel) -->
+    <div class="grid grid-cols-12 gap-4 items-center">
+      <!-- Left side: align to plugin list width (col-span-9) -->
+      <div class="col-span-9">
+        <div class="flex items-center gap-3 flex-nowrap">
+          <UiButton size="sm" variant="ghost" class="px-3" :title="'Rescanner'" @click="refresh">
+            <div class="flex items-center gap-2">
+              <Icon name="mingcute:refresh-3-fill" :width="16" />
+              <span>Rescanner</span>
+            </div>
+          </UiButton>
+          <UiSearchInput
+            v-model="search"
+            placeholder="Rechercher un plugin…"
+            class="min-w-0 flex-1"
+            :dense="false"
+          />
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-[12px] opacity-70">Trier par</span>
+            <UiSelect v-model="sortKey" :options="sortOptions" />
+            <UiButton
+              size="sm"
+              variant="ghost"
+              :title="sortDir === 'asc' ? 'Ascendant' : 'Descendant'"
+              @click="toggleDir"
+            >
+              <div class="flex items-center gap-2">
+                <Icon
+                  :name="
+                    sortDir === 'asc'
+                      ? 'mingcute:sort-descending-fill'
+                      : 'mingcute:sort-ascending-fill'
+                  "
+                  :width="16"
+                />
+                <span>{{ sortDir === 'asc' ? 'Ascendant' : 'Descendant' }}</span>
+              </div>
+            </UiButton>
+          </div>
         </div>
-      </UiButton>
-      <UiSearchInput
-        v-model="search"
-        placeholder="Rechercher un plugin…"
-        class="flex-1"
-        :dense="false"
-      />
-      <div class="flex items-center gap-2">
-        <span class="text-[12px] opacity-70">Trier par</span>
-        <UiSelect v-model="sortKey" :options="sortOptions" class="min-w-40" />
+      </div>
+      <!-- Right side: Logs aligned above Environment panel (col-span-3) -->
+      <div class="col-span-3 flex justify-end">
         <UiButton
+          v-if="isDev"
           size="sm"
           variant="ghost"
-          :title="sortDir === 'asc' ? 'Ascendant' : 'Descendant'"
-          @click="toggleDir"
+          class="px-3"
+          :title="'Logs'"
+          @click="showPluginLogsModal = true"
         >
           <div class="flex items-center gap-2">
-            <Icon
-              :name="
-                sortDir === 'asc' ? 'mingcute:sort-descending-fill' : 'mingcute:sort-ascending-fill'
-              "
-              :width="16"
-            />
-            <span>{{ sortDir === 'asc' ? 'Ascendant' : 'Descendant' }}</span>
+            <Icon name="mingcute:book-4-fill" :width="16" />
+            <span>Logs</span>
           </div>
         </UiButton>
       </div>
-      <UiButton
-        v-if="isDev"
-        size="sm"
-        variant="ghost"
-        class="ml-auto px-3"
-        :title="'Logs'"
-        @click="showPluginLogsModal = true"
-      >
-        <div class="flex items-center gap-2">
-          <Icon name="mingcute:book-4-fill" :width="16" />
-          <span>Logs</span>
-        </div>
-      </UiButton>
     </div>
 
     <div class="flex-1 overflow-auto min-h-0 grid grid-cols-12 gap-4">
@@ -134,7 +144,9 @@
                 class="cursor-pointer select-none px-3 py-2 text-[12px] flex items-center gap-2"
               >
                 <Icon name="mingcute:box-3-fill" :width="16" class="opacity-80" />
-                <span class="font-semibold">Plugins internes ({{ internalStandalone.length }})</span>
+                <span class="font-semibold"
+                  >Plugins internes ({{ internalStandalone.length }})</span
+                >
               </summary>
               <div class="p-3 flex flex-col">
                 <template

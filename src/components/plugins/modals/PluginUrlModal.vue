@@ -6,7 +6,9 @@
   >
     <form class="space-y-4 pt-1" @submit.prevent="submit">
       <div class="space-y-1">
-        <label class="text-[11px] uppercase tracking-wide font-medium text-neutral-300">URL du plugin</label>
+        <label class="text-[11px] uppercase tracking-wide font-medium text-neutral-300"
+          >URL du plugin</label
+        >
         <input
           ref="inputEl"
           v-model="localUrl"

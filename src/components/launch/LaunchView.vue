@@ -35,6 +35,9 @@
         />
       </div>
     </section>
+
+    <!-- Version selection modal (reusable component) -->
+    <VersionSelectModal v-model="showVersionModal" @confirm="onVersionModalConfirm" />
   </div>
 </template>
 <script setup lang="ts">
@@ -44,6 +47,7 @@ import { NewsTag } from '@common/enums/NewsTag';
 import LaunchCard from '@components/launch/LaunchCard.vue';
 import NewsCard from '@components/launch/NewsCard.vue';
 import UiButton from '@components/ui/buttons/UiButton.vue';
+import VersionSelectModal from '@components/versions/modals/VersionSelectModal.vue';
 import { useSettings } from '@composables/useSettings';
 import { useToasts } from '@composables/useToasts';
 import { invoke } from '@tauri-apps/api/core';
@@ -57,6 +61,29 @@ const steam = ref(true);
 const launchCardImage = ref(menuImage);
 const heroImage = ref(heroPlaceholder);
 const { memoryMB, load: loadSettings } = useSettings();
+// Version selection modal if none selected
+const showVersionModal = ref(false);
+const pendingLaunchAfterSelect = ref(false);
+
+async function ensureVersionSelected() {
+  try {
+    const res = await invoke<{ selectedId?: string | null }>('list_versions');
+    const selected = (res?.selectedId as string) || '';
+    if (!selected) {
+      showVersionModal.value = true;
+    }
+  } catch {}
+}
+
+async function onVersionModalConfirm(id: string) {
+  if (!id) return;
+  await invoke<string>('select_version', { id });
+  showVersionModal.value = false;
+  if (pendingLaunchAfterSelect.value) {
+    loading.value = true;
+    await doLaunchGame();
+  }
+}
 const news = ref<NewsItem[]>([
   {
     id: 1,
@@ -92,10 +119,7 @@ const news = ref<NewsItem[]>([
   },
 ]);
 
-async function launch() {
-  if (loading.value) return;
-  loading.value = true;
-  error.value = '';
+async function doLaunchGame() {
   try {
     const res = await invoke('launch_game', { steam: steam.value, mem_mb: memoryMB.value || 3072 });
     if (res && typeof res === 'string' && res.startsWith('[Erreur]')) error.value = res;
@@ -104,7 +128,21 @@ async function launch() {
     error.value = String(e);
   } finally {
     loading.value = false;
+    pendingLaunchAfterSelect.value = false;
   }
+}
+
+async function launch() {
+  if (loading.value) return;
+  loading.value = true;
+  error.value = '';
+  await ensureVersionSelected();
+  if (showVersionModal.value) {
+    pendingLaunchAfterSelect.value = true;
+    loading.value = false;
+    return;
+  }
+  await doLaunchGame();
 }
 
 const emit = defineEmits(['launched']);
@@ -112,6 +150,7 @@ const emit = defineEmits(['launched']);
 const { error: toastError } = useToasts();
 onMounted(async () => {
   await loadSettings();
+  // Do not auto-open the modal on view mount; it will open on launch if needed.
 });
 watch(
   () => error.value,
@@ -120,6 +159,7 @@ watch(
   }
 );
 </script>
+
 <style scoped>
 @keyframes pulseSlow {
   0%,

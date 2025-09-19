@@ -7,14 +7,14 @@ use std::{
     path::PathBuf,
     process::{Command, Stdio},
 };
-use tauri::{Emitter, Window};
+use tauri::{AppHandle, Emitter, Manager, Window};
 
 pub fn launch_game(window: Window, steam: bool, mem_mb: Option<u64>) -> Result<String> {
     info(
         "launch",
         &format!("launch_game invoked (steam={}, mem_mb={:?})", steam, mem_mb),
     );
-    let ctx = resolve_launch_context()?;
+    let ctx = resolve_launch_context(window.app_handle().clone())?;
     let core_jar = ctx
         .core_jar
         .ok_or_else(|| anyhow!("[Error] Avrix-Core.jar not found."))?;
@@ -116,11 +116,17 @@ struct LaunchContext {
     java_path: PathBuf,
 }
 
-fn resolve_launch_context() -> Result<LaunchContext> {
+fn resolve_launch_context(app: AppHandle) -> Result<LaunchContext> {
     let base = std::env::current_dir()?;
     let game_root = find_game_root(&base).unwrap_or(base.clone());
+    // Try selected version folder
+    let version_dir: Option<PathBuf> = crate::versions::resolve_selected_version_dir(&app);
+    if let Some(ref vd) = version_dir {
+        info("launch", &format!("Selected version dir: {}", vd.display()));
+    }
     let mut candidates: Vec<PathBuf> = vec![];
     let search_dirs = [
+        version_dir.clone().unwrap_or(base.clone()),
         base.clone(),
         game_root.clone(),
         base.join(".."),
@@ -149,7 +155,10 @@ fn resolve_launch_context() -> Result<LaunchContext> {
     let mut raw_entries: Vec<String> = Vec::new();
     raw_entries.push(game_root.to_string_lossy().to_string());
     raw_entries.push(base.to_string_lossy().to_string());
-    for p in [&base, &game_root] {
+    if let Some(vd) = &version_dir {
+        raw_entries.push(vd.to_string_lossy().to_string());
+    }
+    for p in [version_dir.as_ref().unwrap_or(&base), &base, &game_root] {
         if p.exists() {
             for entry in fs::read_dir(p)? {
                 if let Ok(e) = entry {
@@ -182,7 +191,7 @@ fn resolve_launch_context() -> Result<LaunchContext> {
         "win32"
     };
     let mut lib_parts: Vec<String> = vec![];
-    for p in [&base, &game_root] {
+    for p in [version_dir.as_ref().unwrap_or(&base), &base, &game_root] {
         if p.exists() {
             let base_s = p.to_string_lossy().to_string();
             if !lib_parts.contains(&base_s) {
@@ -198,7 +207,7 @@ fn resolve_launch_context() -> Result<LaunchContext> {
         }
     }
     let library_path = lib_parts.join(if cfg!(windows) { ";" } else { ":" });
-    let java_path = find_java()?;
+    let java_path = find_java(version_dir.as_ref())?;
     let work_dir = game_root.clone();
     Ok(LaunchContext {
         core_jar,
@@ -209,10 +218,15 @@ fn resolve_launch_context() -> Result<LaunchContext> {
     })
 }
 
-fn find_java() -> Result<PathBuf> {
+fn find_java(version_dir: Option<&PathBuf>) -> Result<PathBuf> {
     let exe_name = if cfg!(windows) { "javaw.exe" } else { "java" };
     let fallback_exe_name = if cfg!(windows) { "java.exe" } else { "java" };
     let mut candidates: Vec<PathBuf> = Vec::new();
+    // Prefer JRE inside selected version
+    if let Some(vd) = version_dir {
+        candidates.push(vd.join("jre").join("bin").join(exe_name));
+        candidates.push(vd.join("jre").join("bin").join(fallback_exe_name));
+    }
     if let Ok(cur) = std::env::current_dir() {
         candidates.push(cur.join("jre").join("bin").join(exe_name));
         candidates.push(cur.join("jre").join("bin").join(fallback_exe_name));
@@ -242,5 +256,7 @@ fn find_java() -> Result<PathBuf> {
     if let Ok(p) = which::which(fallback_exe_name) {
         return Ok(p);
     }
-    Err(anyhow!("java not found (bundled ./jre, JAVA_HOME or PATH)"))
+    Err(anyhow!(
+        "java not found (version ./jre, bundled ./jre, JAVA_HOME or PATH)"
+    ))
 }

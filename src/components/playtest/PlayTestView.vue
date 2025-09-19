@@ -5,7 +5,8 @@
       <span>PlayTest (DEV uniquement)</span>
       <span
         class="ml-2 px-2 py-0.5 rounded bg-accent-600/30 border border-accent-500/40 text-accent-200 text-[10px] tracking-wide"
-      >DEV</span>
+        >DEV</span
+      >
     </h1>
 
     <section class="space-y-2">
@@ -68,7 +69,8 @@
               <span class="truncate" title="AuteurX">AuteurX</span>
               <span
                 class="px-1 py-0.5 rounded bg-neutral-700/60 text-[10px] uppercase tracking-wide"
-              >both</span>
+                >both</span
+              >
             </div>
             <div class="flex items-center justify-between text-[10px] opacity-50">
               <span title="GPL">GPL</span>
@@ -98,7 +100,8 @@
               <span
                 class="uppercase tracking-wide text-[9px] font-semibold"
                 :class="logCls(l.level)"
-              >{{ l.level }}</span>
+                >{{ l.level }}</span
+              >
               <span class="opacity-60">[{{ l.source }}]</span>
               <span class="flex-1 break-words" :class="logCls(l.level)">{{ l.message }}</span>
             </li>

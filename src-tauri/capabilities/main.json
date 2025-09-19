@@ -1,14 +1,8 @@
 {
   "identifier": "main",
   "description": "Capabilities for main window: allow events and basic window controls.",
-  "platforms": [
-    "windows",
-    "linux",
-    "macOS"
-  ],
-  "windows": [
-    "main"
-  ],
+  "platforms": ["windows", "linux", "macOS"],
+  "windows": ["main"],
   "permissions": [
     "core:event:allow-listen",
     "core:window:allow-close",
@@ -25,6 +19,7 @@
     "store:default",
     "updater:default",
     "process:default",
-    "opener:default"
+    "opener:default",
+    "stronghold:default"
   ]
 }
