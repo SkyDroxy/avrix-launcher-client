@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue';
+import { ref, watch, shallowRef, markRaw } from 'vue';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -17,7 +17,7 @@ export type UpdateStatus =
 
 const status = ref<UpdateStatus>('idle');
 const errorMsg = ref<string | null>(null);
-const available = ref<Update | null>(null);
+const available = shallowRef<Update | null>(null);
 const progress = ref<{ downloaded: number; total: number }>({ downloaded: 0, total: 0 });
 const lastCheckAt = ref<number | null>(null);
 
@@ -60,7 +60,8 @@ export function useUpdater() {
         available.value = null;
         return null;
       }
-      available.value = upd;
+      // IMPORTANT: avoid wrapping the Update object in a Vue proxy
+      available.value = markRaw(upd) as Update;
       status.value = 'available';
       if (!opts?.silent) {
         toastInfo(`Mise à jour disponible: v${upd.version}`);
@@ -81,7 +82,9 @@ export function useUpdater() {
       status.value = 'downloading';
       progress.value = { downloaded: 0, total: 0 };
       let total = 0;
-      await available.value.downloadAndInstall((event) => {
+      const upd = available.value;
+      // guard: ensure we are not dealing with a reactive proxy
+      await upd!.downloadAndInstall((event) => {
         switch (event.event) {
           case 'Started':
             total = (event as any).data?.contentLength || 0;

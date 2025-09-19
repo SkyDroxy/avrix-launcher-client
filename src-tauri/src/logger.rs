@@ -120,14 +120,13 @@ pub fn setup_global_handlers(app: &tauri::AppHandle) {
     INIT_HOOK.call_once(|| {
         panic::set_hook(Box::new(move |panic_info| {
             let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-            let mut reason: String = String::new();
-            if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-                reason = s.to_string();
+            let reason: String = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+                s.to_string()
             } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
-                reason = s.clone();
+                s.clone()
             } else {
-                reason = "unknown panic".to_string();
-            }
+                "unknown panic".to_string()
+            };
             let location = if let Some(loc) = panic_info.location() {
                 format!("{}:{}:{}", loc.file(), loc.line(), loc.column())
             } else {
