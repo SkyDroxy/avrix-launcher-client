@@ -1,0 +1,19 @@
+# Build & generated
+/dist
+/node_modules
+/build
+/src-tauri/target
+coverage
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Output
+*.min.js
+
+# Misc
+.DS_Store
+Thumbs.db

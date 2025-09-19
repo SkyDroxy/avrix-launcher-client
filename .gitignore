@@ -1,0 +1,17 @@
+# Node / Vite
+node_modules/
+dist/
+*.log
+
+# Tauri Rust
+src-tauri/target/
+src-tauri/tauri.conf.json.json
+
+# Tauri build outputs
+src-tauri/target/**
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,185 @@
+@import 'tailwindcss';
+
+/* Tailwind v4 @theme: uniquement des custom properties (variables).
+   On définit ici des tokens sémantiques. Tailwind génère les classes
+   bg-[name]-{50..950} seulement si on utilise la config; comme on veut
+   un contrôle ultra simple, on crée des variables et on mappe ensuite
+   des utilitaires personnalisés. */
+
+@theme {
+  --color-primary-200: #c7d2fe;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+
+  --color-secondary-200: #e5e5e5;
+  --color-secondary-400: #a3a3a3;
+  --color-secondary-500: #525252;
+  --color-secondary-600: #404040;
+
+  --color-accent-200: #fbcfe8;
+  --color-accent-400: #f472b6;
+  --color-accent-500: #ec4899;
+  --color-accent-600: #db2777;
+
+  --color-warn-200: #fde68a;
+  --color-warn-400: #fbbf24;
+  --color-warn-500: #f59e0b;
+  --color-warn-600: #d97706;
+
+  --color-success-200: #a7f3d0;
+  --color-success-400: #34d399;
+  --color-success-500: #10b981;
+  --color-success-600: #059669;
+
+  --color-error-200: #fecdd3;
+  --color-error-400: #fb7185;
+  --color-error-500: #f43f5e;
+  --color-error-600: #e11d48;
+
+  --color-info-200: #bfdbfe;
+  --color-info-400: #60a5fa;
+  --color-info-500: #3b82f6;
+  --color-info-600: #2563eb;
+
+  /* Custom properties only inside @theme */
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f5f5f5;
+  --color-neutral-200: #e5e5e5;
+  --color-neutral-300: #d4d4d4;
+  --color-neutral-400: #a3a3a3;
+  --color-neutral-500: #737373;
+  --color-neutral-600: #525252;
+  --color-neutral-700: #404040;
+  --color-neutral-800: #262626;
+  --color-neutral-900: #171717;
+  --color-neutral-950: #0a0a0a;
+
+  /* Aliases to Tailwind default palettes so bg-primary-500, text-success-700, etc. exist */
+  /* Primary -> indigo */
+  --color-primary-50: var(--color-indigo-50);
+  --color-primary-100: var(--color-indigo-100);
+  --color-primary-200: var(--color-indigo-200);
+  --color-primary-300: var(--color-indigo-300);
+  --color-primary-400: var(--color-indigo-400);
+  --color-primary-500: var(--color-indigo-500);
+  --color-primary-600: var(--color-indigo-600);
+  --color-primary-700: var(--color-indigo-700);
+  --color-primary-800: var(--color-indigo-800);
+  --color-primary-900: var(--color-indigo-900);
+  --color-primary-950: var(--color-indigo-950);
+
+  /* Secondary -> neutral */
+  --color-secondary-50: var(--color-neutral-50);
+  --color-secondary-100: var(--color-neutral-100);
+  --color-secondary-200: var(--color-neutral-200);
+  --color-secondary-300: var(--color-neutral-300);
+  --color-secondary-400: var(--color-neutral-400);
+  --color-secondary-500: var(--color-neutral-500);
+  --color-secondary-600: var(--color-neutral-600);
+  --color-secondary-700: var(--color-neutral-700);
+  --color-secondary-800: var(--color-neutral-800);
+  --color-secondary-900: var(--color-neutral-900);
+  --color-secondary-950: var(--color-neutral-950);
+
+  /* Accent -> fuchsia */
+  --color-accent-50: var(--color-fuchsia-50);
+  --color-accent-100: var(--color-fuchsia-100);
+  --color-accent-200: var(--color-fuchsia-200);
+  --color-accent-300: var(--color-fuchsia-300);
+  --color-accent-400: var(--color-fuchsia-400);
+  --color-accent-500: var(--color-fuchsia-500);
+  --color-accent-600: var(--color-fuchsia-600);
+  --color-accent-700: var(--color-fuchsia-700);
+  --color-accent-800: var(--color-fuchsia-800);
+  --color-accent-900: var(--color-fuchsia-900);
+  --color-accent-950: var(--color-fuchsia-950);
+
+  /* Warn -> amber */
+  --color-warn-50: var(--color-amber-50);
+  --color-warn-100: var(--color-amber-100);
+  --color-warn-200: var(--color-amber-200);
+  --color-warn-300: var(--color-amber-300);
+  --color-warn-400: var(--color-amber-400);
+  --color-warn-500: var(--color-amber-500);
+  --color-warn-600: var(--color-amber-600);
+  --color-warn-700: var(--color-amber-700);
+  --color-warn-800: var(--color-amber-800);
+  --color-warn-900: var(--color-amber-900);
+  --color-warn-950: var(--color-amber-950);
+
+  /* Success -> emerald */
+  --color-success-50: var(--color-emerald-50);
+  --color-success-100: var(--color-emerald-100);
+  --color-success-200: var(--color-emerald-200);
+  --color-success-300: var(--color-emerald-300);
+  --color-success-400: var(--color-emerald-400);
+  --color-success-500: var(--color-emerald-500);
+  --color-success-600: var(--color-emerald-600);
+  --color-success-700: var(--color-emerald-700);
+  --color-success-800: var(--color-emerald-800);
+  --color-success-900: var(--color-emerald-900);
+  --color-success-950: var(--color-emerald-950);
+
+  /* Error -> rose */
+  --color-error-50: var(--color-rose-50);
+  --color-error-100: var(--color-rose-100);
+  --color-error-200: var(--color-rose-200);
+  --color-error-300: var(--color-rose-300);
+  --color-error-400: var(--color-rose-400);
+  --color-error-500: var(--color-rose-500);
+  --color-error-600: var(--color-rose-600);
+  --color-error-700: var(--color-rose-700);
+  --color-error-800: var(--color-rose-800);
+  --color-error-900: var(--color-rose-900);
+  --color-error-950: var(--color-rose-950);
+
+  /* Info -> blue */
+  --color-info-50: var(--color-blue-50);
+  --color-info-100: var(--color-blue-100);
+  --color-info-200: var(--color-blue-200);
+  --color-info-300: var(--color-blue-300);
+  --color-info-400: var(--color-blue-400);
+  --color-info-500: var(--color-blue-500);
+  --color-info-600: var(--color-blue-600);
+  --color-info-700: var(--color-blue-700);
+  --color-info-800: var(--color-blue-800);
+  --color-info-900: var(--color-blue-900);
+  --color-info-950: var(--color-blue-950);
+}
+
+/* Light theme: invert neutral scale so existing classes map to light-friendly tones */
+:root[data-theme='light'] {
+  --color-neutral-50: #0a0a0a; /* was 950 */
+  --color-neutral-100: #171717; /* was 900 */
+  --color-neutral-200: #262626; /* was 800 */
+  --color-neutral-300: #404040; /* was 700 */
+  --color-neutral-400: #525252; /* was 600 */
+  --color-neutral-500: #737373; /* stays */
+  --color-neutral-600: #a3a3a3; /* was 400 */
+  --color-neutral-700: #d4d4d4; /* was 300 */
+  --color-neutral-800: #e5e5e5; /* was 200 */
+  --color-neutral-900: #f5f5f5; /* was 100 */
+  --color-neutral-950: #fafafa; /* was 50 */
+}
+
+/* Explicit dark selector mirrors default, useful if toggling both ways */
+:root[data-theme='dark'] {
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f5f5f5;
+  --color-neutral-200: #e5e5e5;
+  --color-neutral-300: #d4d4d4;
+  --color-neutral-400: #a3a3a3;
+  --color-neutral-500: #737373;
+  --color-neutral-600: #525252;
+  --color-neutral-700: #404040;
+  --color-neutral-800: #262626;
+  --color-neutral-900: #171717;
+  --color-neutral-950: #0a0a0a;
+}
+
+/* Additional alpha tokens for custom CSS (not utilities) */
+:root {
+  --color-neutral-700-90a: rgba(64, 64, 64, 0.9);
+  --color-black-35a: rgba(0, 0, 0, 0.35);
+}
