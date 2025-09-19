@@ -44,6 +44,12 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Windows bundler dependencies (NSIS & WiX)
+        if: runner.os == 'Windows'
+        run: |
+          choco install nsis -y
+          choco install wixtoolset -y
+
       - name: Install Tauri CLI
         run: pnpm add -D @tauri-apps/cli
 
@@ -79,6 +85,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          args: --bundles nsis
           tagName: v${{ env.NEW_VERSION }}
           releaseName: Avrix Launcher v${{ env.NEW_VERSION }}
           releaseBody: |
