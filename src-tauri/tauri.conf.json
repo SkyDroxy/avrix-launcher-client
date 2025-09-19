@@ -1,6 +1,6 @@
 {
   "identifier": "com.avrix.launcher",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "productName": "Avrix Launcher",
   "build": {
     "beforeDevCommand": "vite dev",
@@ -40,7 +40,11 @@
         "https://s3.storage.skymunt.com/avrix-launcher/latest.json"
       ],
       "windows": {
-        "installMode": "passive"
+        "installMode": "quiet",
+        "installerArgs": [
+          "/R",
+          "/NS"
+        ]
       }
     }
   }

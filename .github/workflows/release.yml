@@ -188,12 +188,27 @@ jobs:
           if (-not $found) { throw "Inno installer not found with pattern $pattern" }
           echo "INNO_EXE_PATH=$($found.FullName)" >> $env:GITHUB_ENV
 
+      - name: Compile update-only Inno installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found at $iscc" }
+          & "$iscc" "installer\update.iss"
+          $ver = "$env:NEW_VERSION"
+          $pattern = "Avrix-Update-$ver*.exe"
+          $found = Get-ChildItem -Recurse -Path installer -Filter $pattern | Select-Object -First 1
+          if (-not $found) { $found = Get-ChildItem -Recurse -Path . -Filter $pattern | Select-Object -First 1 }
+          if (-not $found) { throw "Update-only installer not found with pattern $pattern" }
+          echo "INNO_UPDATE_EXE_PATH=$($found.FullName)" >> $env:GITHUB_ENV
+
       - name: Upload Inno installer to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.NEW_VERSION }}
           files: |
             ${{ env.INNO_EXE_PATH }}
+            ${{ env.INNO_UPDATE_EXE_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -212,3 +227,4 @@ jobs:
           $ver = "$env:NEW_VERSION"
           $dest = "s3/avrix-launcher/v$ver/"
           & $mc cp "$env:INNO_EXE_PATH" $dest
+          if ($env:INNO_UPDATE_EXE_PATH -ne '') { & $mc cp "$env:INNO_UPDATE_EXE_PATH" $dest }
