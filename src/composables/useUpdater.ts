@@ -2,9 +2,6 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { ref, watch, shallowRef, markRaw } from 'vue';
-import { Command } from '@tauri-apps/plugin-shell';
-import { BaseDirectory, writeFile } from '@tauri-apps/plugin-fs';
-import { join, tempDir } from '@tauri-apps/api/path';
 
 import { useSettings } from './useSettings';
 import { useToasts } from './useToasts';
@@ -124,43 +121,6 @@ export function useUpdater() {
       const msg = (e && (e.message || String(e))) || "Échec de l'installation";
       errorMsg.value = msg;
       toastError(`Échec de la mise à jour: ${msg}`);
-      // Fallback: try update-only installer if available in release assets/S3
-      const ok = await fallbackUpdateInstaller();
-      return ok;
-    }
-  }
-
-  async function fallbackUpdateInstaller(): Promise<boolean> {
-    try {
-      // Construct S3 URL for update-only installer. Matches CI naming
-      const ver = available.value?.version;
-      if (!ver) return false;
-      const fileName = `Avrix-Update-${ver}.exe`;
-      const url = `https://s3.storage.skymunt.com/avrix-launcher/v${ver}/${fileName}`;
-
-      // Write directly to temp root to avoid dir creation
-      const relPath = fileName;
-
-      // Download file
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const buf = new Uint8Array(await res.arrayBuffer());
-      await writeFile(relPath, buf, { baseDir: BaseDirectory.Temp });
-
-      // Run installer silently and relaunch
-      const fullTemp = await tempDir();
-      const fullPath = await join(fullTemp, relPath);
-      const cmd = Command.create('powershell', [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        `Start-Process -FilePath "${fullPath}" -ArgumentList "/VERYSILENT" -Wait`
-      ]);
-      await cmd.execute();
-      try { await relaunch(); } catch {}
-      return true;
-    } catch (err) {
-      // noop: keep previous error
       return false;
     }
   }
@@ -180,7 +140,6 @@ export function useUpdater() {
     autoCheckOnStartup,
     checkNow,
     downloadAndInstall,
-    fallbackUpdateInstaller,
     openReleases,
   };
 }
