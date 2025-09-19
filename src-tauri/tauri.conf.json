@@ -1,6 +1,6 @@
 {
   "identifier": "com.avrix.launcher",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "productName": "Avrix Launcher",
   "build": {
     "beforeDevCommand": "vite dev",
