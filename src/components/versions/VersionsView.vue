@@ -10,7 +10,7 @@
       >
         <div class="flex items-center gap-2">
           <Icon name="mingcute:folder-open-fill" :width="16" />
-          <span>Installer une version (fichier/dossier)</span>
+          <span>Installer une version via un fichier .jar</span>
         </div>
       </UiButton>
       <UiButton

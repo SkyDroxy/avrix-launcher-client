@@ -44,6 +44,7 @@ jobs:
         run: |
           choco install nsis -y
           choco install wixtoolset -y
+          choco install innosetup -y
 
       - name: Install Tauri CLI
         run: pnpm add -D @tauri-apps/cli
@@ -163,3 +164,51 @@ jobs:
 
           # Publish latest.json at bucket root
           & $mc cp "$env:LATEST_JSON_PATH" "s3/avrix-launcher/latest.json"
+
+      - name: Copy launcher EXE for Inno Setup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/copy-exe.cjs
+          if (-not (Test-Path "installer/payload/build/AvrixLauncher.exe")) { throw "AvrixLauncher.exe not found in installer/payload/build" }
+
+      - name: Compile legacy Inno Setup installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found at $iscc" }
+          # NEW_VERSION is already set in env; setup.iss reads it via GetEnv("NEW_VERSION")
+          & "$iscc" "installer\setup.iss"
+          $ver = "$env:NEW_VERSION"
+          # Try to find the output installer
+          $pattern = "*Setup-$ver*.exe"
+          $found = Get-ChildItem -Recurse -Path installer -Filter $pattern | Select-Object -First 1
+          if (-not $found) { $found = Get-ChildItem -Recurse -Path . -Filter $pattern | Select-Object -First 1 }
+          if (-not $found) { throw "Inno installer not found with pattern $pattern" }
+          echo "INNO_EXE_PATH=$($found.FullName)" >> $env:GITHUB_ENV
+
+      - name: Upload Inno installer to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.NEW_VERSION }}
+          files: |
+            ${{ env.INNO_EXE_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Inno installer to MinIO (S3)
+        if: env.INNO_EXE_PATH != ''
+        shell: pwsh
+        env:
+          MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $mc = "$PWD/mc.exe"
+          if (-not (Test-Path $mc)) { Invoke-WebRequest -Uri "https://dl.min.io/client/mc/release/windows-amd64/mc.exe" -OutFile $mc }
+          & $mc alias set s3 $env:MINIO_ENDPOINT $env:MINIO_ACCESS_KEY $env:MINIO_SECRET_KEY
+          $ver = "$env:NEW_VERSION"
+          $dest = "s3/avrix-launcher/v$ver/"
+          & $mc cp "$env:INNO_EXE_PATH" $dest

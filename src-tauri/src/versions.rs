@@ -11,19 +11,27 @@ use zip::ZipArchive;
 const STORE_SELECTED_KEY: &str = "selectedVersionId";
 
 fn versions_root() -> Result<PathBuf> {
-    let base = std::env::current_dir()?;
-    if let Some(gr) = find_game_root(&base) {
+    // Prefer resolving from the launcher executable directory
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or(std::env::current_dir()?);
+
+    // Try to find the game root starting from the exe dir
+    if let Some(gr) = find_game_root(&exe_dir) {
         return Ok(gr.join("avrix").join("versions"));
     }
+
+    // Allow an explicit absolute override
     if let Ok(custom) = std::env::var("AVRIX_VERSIONS_DIR") {
         let p = PathBuf::from(custom);
         if p.is_absolute() {
             return Ok(p);
         }
     }
-    let mut p = std::env::temp_dir();
-    p.push("avrix\\versions");
-    Ok(p)
+
+    // Fallback: keep versions next to the launcher (within the exe directory)
+    Ok(exe_dir.join("versions"))
 }
 
 fn read_dir_size_kb(path: &Path) -> u64 {

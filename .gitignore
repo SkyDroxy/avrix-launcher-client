@@ -31,3 +31,5 @@ src-tauri/target/**
 Thumbs.db
 .vscode/
 .idea/
+/installer/Output
+/installer/payload/build
