@@ -47,8 +47,8 @@ Name: "{commondesktop}\{#AppName}"; Filename: "{app}\{#AppFolderName}\{#AppExeNa
 Filename: "{app}\{#AppFolderName}\{#AppExeName}"; Description: "Lancer {#AppName}"; Flags: nowait postinstall skipifsilent
 
 [Registry]
-; Enregistre le répertoire d'installation pour que l'app (ou d'autres installateurs) puisse le retrouver
-Root: HKCU; Subkey: "Software\Avrix"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}\{#AppFolderName}"; Flags: uninsdeletevalue
+; Écrit aussi la valeur par défaut (non nommée) pour que l'installeur NSIS de Tauri la prenne comme répertoire par défaut
+Root: HKCU; Subkey: "Software\Avrix\Avrix Launcher"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppFolderName}"; Flags: uninsdeletevalue
 
 [Code]
 procedure InitializeWizard;

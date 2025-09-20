@@ -108,13 +108,16 @@ export function useUpdater() {
         }
       });
       status.value = 'installing';
-      // On Windows the app will exit automatically when installing
-      // Await a small delay to make sure UI updates before exit
-      setTimeout(async () => {
-        try {
-          await relaunch();
-        } catch {}
-      }, 50);
+      // Sur Windows, l'installeur NSIS ferme l'app et peut la relancer si /R est passé.
+      // Éviter d'appeler relaunch() pour ne pas créer une course qui rouvre puis referme.
+      const isWindows = navigator.userAgent.includes('Windows');
+      if (!isWindows) {
+        setTimeout(async () => {
+          try {
+            await relaunch();
+          } catch {}
+        }, 50);
+      }
       return true;
     } catch (e: any) {
       status.value = 'error';
