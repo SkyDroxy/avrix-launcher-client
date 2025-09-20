@@ -157,7 +157,12 @@ jobs:
           if (-not $env:UPDATER_EXE_PATH) { throw "UPDATER_EXE_PATH not set" }
           $sigOut = "$env:UPDATER_EXE_PATH.sig"
           # Use Tauri signer to create a signature compatible with the updater. It prints the signature to stdout.
-          $sig = pnpm --silent tauri signer sign --private-key "$env:TAURI_SIGNING_PRIVATE_KEY" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" --ci "$env:UPDATER_EXE_PATH"
+          $sig = pnpm --silent tauri signer sign --private-key "$env:TAURI_SIGNING_PRIVATE_KEY" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" "$env:UPDATER_EXE_PATH" 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "tauri signer failed with exit code $LASTEXITCODE"
+            Write-Host ($sig | Out-String)
+            throw "Failed to obtain signature from tauri signer"
+          }
           # Take the last non-empty line to avoid any incidental noise
           $sig = ($sig | Where-Object { $_ -and $_.Trim().Length -gt 0 } | Select-Object -Last 1).Trim()
           if (-not $sig) { throw "Failed to obtain signature from tauri signer" }
