@@ -1,0 +1,139 @@
+name: Build Avrix Updater
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 0.2.7)'
+        required: true
+      exeUrl:
+        description: 'Optional URL to AvrixLauncher.exe to embed in updater.'
+        required: false
+      buildApp:
+        type: boolean
+        default: false
+        description: 'Build Avrix app to produce AvrixLauncher.exe (if no exeUrl provided)'
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      NEW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+      MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+      MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set version env when pushed by tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          # Expect tags like updater-0.2.7
+          $tag = '${{ github.ref_name }}'
+          if ($tag -match 'updater-(?<ver>.*)') { echo "NEW_VERSION=$($Matches['ver'])" >> $env:GITHUB_ENV }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $url = 'https://jrsoftware.org/download.php/is.exe'
+          Invoke-WebRequest $url -OutFile is.exe
+          Start-Process .\is.exe -ArgumentList '/VERYSILENT' -Wait
+
+      - name: Ensure payload/build exists
+        shell: pwsh
+        working-directory: installer
+        run: |
+          New-Item -ItemType Directory -Path 'payload/build' -Force | Out-Null
+
+      - name: Download AvrixLauncher.exe from URL
+        if: ${{ github.event.inputs.exeUrl != '' }}
+        shell: pwsh
+        working-directory: installer/payload/build
+        run: |
+          Invoke-WebRequest '${{ github.event.inputs.exeUrl }}' -OutFile 'AvrixLauncher.exe'
+
+      - name: Build Avrix app to get EXE
+        if: ${{ github.event.inputs.exeUrl == '' && github.event.inputs.buildApp == true }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust (stable)
+        if: ${{ github.event.inputs.exeUrl == '' && github.event.inputs.buildApp == true }}
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Enable corepack and install deps
+        if: ${{ github.event.inputs.exeUrl == '' && github.event.inputs.buildApp == true }}
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+          pnpm install --frozen-lockfile
+
+      - name: Build Tauri app
+        if: ${{ github.event.inputs.exeUrl == '' && github.event.inputs.buildApp == true }}
+        shell: pwsh
+        run: |
+          pnpm tauri:build
+
+      - name: Compile updater.iss
+        shell: pwsh
+        working-directory: installer
+        run: |
+          $env:NEW_VERSION = '${{ env.NEW_VERSION }}'
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' updater.iss
+
+      - name: Locate output
+        id: find_output
+        shell: pwsh
+        working-directory: installer
+        run: |
+          $file = Get-ChildItem -Recurse -Filter 'Avrix-Update-*.exe' | Select-Object -First 1
+          if (-not $file) { throw 'Updater output not found' }
+          echo "path=$($file.FullName)" >> $env:GITHUB_OUTPUT
+          $sig = "$($file.FullName).sig"
+          if (Test-Path $sig) { echo "sig=$sig" >> $env:GITHUB_OUTPUT }
+
+      - name: Sign with Tauri Signer
+        if: env.TAURI_PRIVATE_KEY != '' && env.TAURI_KEY_PASSWORD != ''
+        shell: pwsh
+        run: |
+          npm i -g @tauri-apps/cli
+          $file = '${{ steps.find_output.outputs.path }}'
+          tauri signer sign --private-key $Env:TAURI_PRIVATE_KEY --password $Env:TAURI_KEY_PASSWORD --ci --file $file
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Avrix-Update-${{ env.NEW_VERSION }}
+          path: |
+            ${{ steps.find_output.outputs.path }}
+            ${{ steps.find_output.outputs.path }}.sig
+
+      # Optional: Upload to MinIO (S3 compatible), same style as release.yml
+      - name: Upload updater to MinIO (S3)
+        if: env.MINIO_ENDPOINT != '' && env.MINIO_ACCESS_KEY != '' && env.MINIO_SECRET_KEY != ''
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $mc = "$PWD/mc.exe"
+          Invoke-WebRequest -Uri "https://dl.min.io/client/mc/release/windows-amd64/mc.exe" -OutFile $mc
+          & $mc alias set s3 $env:MINIO_ENDPOINT $env:MINIO_ACCESS_KEY $env:MINIO_SECRET_KEY
+
+          # Ensure bucket exists and is public-read
+          try { & $mc mb -p s3/avrix-launcher } catch { }
+          & $mc anonymous set download s3/avrix-launcher
+
+          $ver = "${{ env.NEW_VERSION }}"
+          $dest = "s3/avrix-launcher/v$ver/"
+          & $mc cp "${{ steps.find_output.outputs.path }}" (Join-Path $dest "Avrix-Update-$ver.exe")
+          if (Test-Path "${{ steps.find_output.outputs.path }}.sig") {
+            & $mc cp "${{ steps.find_output.outputs.path }}.sig" (Join-Path $dest "Avrix-Update-$ver.exe.sig")
+          }

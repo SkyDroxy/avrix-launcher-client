@@ -10,8 +10,6 @@ mod versions;
 mod workshop;
 
 use crate::logger::info;
-use tauri_plugin_updater::UpdaterExt;
-use url::Url;
 #[tauri::command]
 fn scan_plugins(window: tauri::Window) -> Result<models::PluginsResult, String> {
     info("main", "scan_plugins invoked");
@@ -118,27 +116,10 @@ fn main() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle();
             logger::setup_global_handlers(&handle);
             store::setup_stores(&handle).map_err(tauri::Error::from)?;
-            // Configure updater at runtime (endpoints and pubkey)
-            // Use environment variables to avoid hardcoding values in config.
-            // AVRIX_UPDATER_ENDPOINT can contain variables like {{target}}, {{arch}}, {{current_version}}
-            let endpoint = std::env::var("AVRIX_UPDATER_ENDPOINT").unwrap_or_default();
-            let pubkey = std::env::var("AVRIX_UPDATER_PUBKEY").ok();
-            let mut builder = app.updater_builder();
-            if !endpoint.is_empty() {
-                if let Ok(url) = Url::parse(&endpoint) {
-                    builder = builder.endpoints(vec![url])?;
-                }
-            }
-            if let Some(pk) = pubkey {
-                builder = builder.pubkey(pk);
-            }
-            // finalize updater runtime configuration
-            builder.build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

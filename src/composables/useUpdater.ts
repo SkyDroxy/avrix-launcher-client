@@ -128,12 +128,6 @@ export function useUpdater() {
     }
   }
 
-  async function openReleases() {
-    try {
-      await openUrl('https://github.com/SkyDroxy/avrix-launcher-client/releases');
-    } catch {}
-  }
-
   return {
     status,
     errorMsg,
@@ -143,6 +137,5 @@ export function useUpdater() {
     autoCheckOnStartup,
     checkNow,
     downloadAndInstall,
-    openReleases,
   };
 }

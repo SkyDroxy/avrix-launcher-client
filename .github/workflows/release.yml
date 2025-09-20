@@ -111,29 +111,43 @@ jobs:
           args: --bundles nsis
           releaseId: ${{ env.RELEASE_ID }}
 
-      - name: Prepare latest.json for S3
+      - name: Prepare latest.json for S3 (prefer updater, fallback NSIS)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $ver = "$env:NEW_VERSION"
+          $baseUrl = "https://s3.storage.skymunt.com/avrix-launcher"
+          $assetName = "Avrix-Update-$ver.exe"
+          $url = "$baseUrl/v$ver/$assetName"
+          $sigUrl = "$url.sig"
 
-          # Locate NSIS installer and its signature
-          $bundleRoot = Get-ChildItem -Recurse -Directory -Path "src-tauri/target" -Filter bundle | Select-Object -First 1
-          if (-not $bundleRoot) { throw "Bundle directory not found under src-tauri/target" }
-          $nsisDir = Get-ChildItem -Recurse -Directory -Path $bundleRoot.FullName -Filter nsis | Select-Object -First 1
-          if (-not $nsisDir) { throw "NSIS bundle directory not found" }
-          $installer = Get-ChildItem -Path $nsisDir.FullName -Filter "*${ver}*setup*.exe" | Select-Object -First 1
-          if (-not $installer) { throw "NSIS installer not found for version $ver" }
-
-          $sigPath = "$($installer.FullName).sig"
-          if (-not (Test-Path $sigPath)) {
-            $sigPath = Get-ChildItem -Path $nsisDir.FullName -Filter "*.sig" | Select-Object -First 1 | ForEach-Object { $_.FullName }
-          }
-          if (-not (Test-Path $sigPath)) { throw "Signature file (.sig) not found" }
-
-          $sig = (Get-Content $sigPath -Raw).Trim()
           $pubDate = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-          $assetName = $installer.Name
+          $sig = $null
+          $usedUrl = $null
+
+          # Try updater first
+          try {
+            $sigTmp = Join-Path $PWD "updater.sig"
+            Invoke-WebRequest -Uri $sigUrl -OutFile $sigTmp -ErrorAction Stop
+            $sig = (Get-Content $sigTmp -Raw).Trim()
+            $usedUrl = $url
+          } catch {
+            # Fallback: use NSIS installer signature and URL
+            $bundleRoot = Get-ChildItem -Recurse -Directory -Path "src-tauri/target" -Filter bundle | Select-Object -First 1
+            if (-not $bundleRoot) { throw "Bundle directory not found under src-tauri/target" }
+            $nsisDir = Get-ChildItem -Recurse -Directory -Path $bundleRoot.FullName -Filter nsis | Select-Object -First 1
+            if (-not $nsisDir) { throw "NSIS bundle directory not found" }
+            $installer = Get-ChildItem -Path $nsisDir.FullName -Filter "*${ver}*setup*.exe" | Select-Object -First 1
+            if (-not $installer) { throw "NSIS installer not found for version $ver" }
+
+            $sigPath = "$($installer.FullName).sig"
+            if (-not (Test-Path $sigPath)) {
+              $sigPath = Get-ChildItem -Path $nsisDir.FullName -Filter "*.sig" | Select-Object -First 1 | ForEach-Object { $_.FullName }
+            }
+            if (-not (Test-Path $sigPath)) { throw "Signature file (.sig) not found" }
+            $sig = (Get-Content $sigPath -Raw).Trim()
+            $usedUrl = "$baseUrl/v$ver/$($installer.Name)"
+          }
 
           $jsonObj = [ordered]@{
             version   = $ver
@@ -142,17 +156,15 @@ jobs:
             platforms = [ordered]@{
               "windows-x86_64" = [ordered]@{
                 signature = $sig
-                url       = "https://s3.storage.skymunt.com/avrix-launcher/v$ver/$assetName"
+                url       = $usedUrl
               }
             }
           }
           $json = $jsonObj | ConvertTo-Json -Depth 5
           Set-Content -Path latest.json -Value $json -Encoding UTF8
 
-          # Expose paths for subsequent step
-          echo "INSTALLER_PATH=$($installer.FullName)" >> $env:GITHUB_ENV
+          # Expose path for subsequent step
           echo "LATEST_JSON_PATH=$((Resolve-Path latest.json).Path)" >> $env:GITHUB_ENV
-          echo "SIG_PATH=$sigPath" >> $env:GITHUB_ENV
 
       - name: Upload artifacts to MinIO (S3)
         shell: pwsh
