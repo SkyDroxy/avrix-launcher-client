@@ -156,9 +156,12 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if (-not $env:UPDATER_EXE_PATH) { throw "UPDATER_EXE_PATH not set" }
           $sigOut = "$env:UPDATER_EXE_PATH.sig"
-          # Use Tauri signer to create a signature compatible with the updater
-          pnpm tauri signer sign --private-key "$env:TAURI_SIGNING_PRIVATE_KEY" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" -f "$env:UPDATER_EXE_PATH" -o "$sigOut" --ci
-          if (-not (Test-Path $sigOut)) { throw "Failed to generate signature at $sigOut" }
+          # Use Tauri signer to create a signature compatible with the updater. It prints the signature to stdout.
+          $sig = pnpm --silent tauri signer sign --private-key "$env:TAURI_SIGNING_PRIVATE_KEY" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" --ci "$env:UPDATER_EXE_PATH"
+          # Take the last non-empty line to avoid any incidental noise
+          $sig = ($sig | Where-Object { $_ -and $_.Trim().Length -gt 0 } | Select-Object -Last 1).Trim()
+          if (-not $sig) { throw "Failed to obtain signature from tauri signer" }
+          Set-Content -Path $sigOut -Value $sig -Encoding ASCII
           echo "UPDATER_SIG_PATH=$sigOut" >> $env:GITHUB_ENV
 
       - name: Prepare latest.json for S3
