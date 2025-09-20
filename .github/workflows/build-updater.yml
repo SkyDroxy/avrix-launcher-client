@@ -22,8 +22,8 @@ jobs:
     runs-on: windows-latest
     env:
       NEW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
-      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
       MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
       MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
@@ -59,29 +59,12 @@ jobs:
         run: |
           Invoke-WebRequest '${{ github.event.inputs.exeUrl }}' -OutFile 'AvrixLauncher.exe'
 
-      - name: Build Avrix app to get EXE
-        if: ${{ github.event.inputs.exeUrl == '' && github.event.inputs.buildApp == true }}
-        uses: actions/setup-node@v4
+      - name: Download Avrix EXE artifact
+        if: ${{ github.event.inputs.exeUrl == '' }}
+        uses: actions/download-artifact@v4
         with:
-          node-version: 20
-
-      - name: Install Rust (stable)
-        if: ${{ github.event.inputs.exeUrl == '' && github.event.inputs.buildApp == true }}
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Enable corepack and install deps
-        if: ${{ github.event.inputs.exeUrl == '' && github.event.inputs.buildApp == true }}
-        shell: pwsh
-        run: |
-          corepack enable
-          corepack prepare pnpm@latest --activate
-          pnpm install --frozen-lockfile
-
-      - name: Build Tauri app
-        if: ${{ github.event.inputs.exeUrl == '' && github.event.inputs.buildApp == true }}
-        shell: pwsh
-        run: |
-          pnpm tauri:build
+          name: avrix-exe
+          path: installer/payload/build
 
       - name: Compile updater.iss
         shell: pwsh
@@ -102,12 +85,12 @@ jobs:
           if (Test-Path $sig) { echo "sig=$sig" >> $env:GITHUB_OUTPUT }
 
       - name: Sign with Tauri Signer
-        if: env.TAURI_PRIVATE_KEY != '' && env.TAURI_KEY_PASSWORD != ''
+        if: env.TAURI_SIGNING_PRIVATE_KEY != '' && env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD != ''
         shell: pwsh
         run: |
           npm i -g @tauri-apps/cli
           $file = '${{ steps.find_output.outputs.path }}'
-          tauri signer sign --private-key $Env:TAURI_PRIVATE_KEY --password $Env:TAURI_KEY_PASSWORD --ci --file $file
+          tauri signer sign --private-key $Env:TAURI_SIGNING_PRIVATE_KEY --password $Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD --ci --file $file
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

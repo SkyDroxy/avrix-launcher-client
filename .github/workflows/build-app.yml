@@ -1,0 +1,92 @@
+name: Build Avrix App
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g., 0.2.8) — optional when tagging'
+        required: false
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Windows bundler dependencies (NSIS & WiX & Inno)
+        run: |
+          choco install nsis -y
+          choco install wixtoolset -y
+          choco install innosetup -y
+
+      - name: Install Tauri CLI
+        run: pnpm add -D @tauri-apps/cli
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.version }}') {
+            node scripts/bump-version.cjs '${{ inputs.version }}'
+          } elseif ('${{ github.ref }}'.StartsWith('refs/tags/')) {
+            $ver = "${{ github.ref_name }}" -replace '^[vV]', ''
+            node scripts/bump-version.cjs $ver
+          }
+          $ver = node -e "console.log(require('./package.json').version)"
+          echo "NEW_VERSION=$ver" >> $env:GITHUB_ENV
+          echo "ver=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Build Tauri app
+        run: pnpm tauri:build
+
+      - name: Copy launcher EXE for Inno/Updater
+        shell: pwsh
+        run: |
+          node scripts/copy-exe.cjs
+          if (-not (Test-Path "installer/payload/build/AvrixLauncher.exe")) { throw "AvrixLauncher.exe not found in installer/payload/build" }
+
+      - name: Upload Avrix EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avrix-exe
+          path: installer/payload/build/AvrixLauncher.exe
+
+      - name: Locate NSIS bundle dir
+        id: nsis
+        shell: pwsh
+        run: |
+          $bundleRoot = Get-ChildItem -Recurse -Directory -Path "src-tauri/target" -Filter bundle | Select-Object -First 1
+          if ($bundleRoot) {
+            $nsisDir = Get-ChildItem -Recurse -Directory -Path $bundleRoot.FullName -Filter nsis | Select-Object -First 1
+            if ($nsisDir) {
+              echo "dir=$($nsisDir.FullName)" >> $env:GITHUB_OUTPUT
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        if: steps.nsis.outputs.dir != ''
+        with:
+          name: nsis-bundle
+          path: |
+            ${{ steps.nsis.outputs.dir }}/*.exe
+            ${{ steps.nsis.outputs.dir }}/*.sig

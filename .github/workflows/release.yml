@@ -185,8 +185,8 @@ jobs:
 
           $ver = "$env:NEW_VERSION"
           $dest = "s3/avrix-launcher/v$ver/"
-          & $mc cp "$env:INSTALLER_PATH" $dest
-          & $mc cp "$env:SIG_PATH" $dest
+          if ($env:INSTALLER_PATH -and (Test-Path $env:INSTALLER_PATH)) { & $mc cp "$env:INSTALLER_PATH" $dest }
+          if ($env:SIG_PATH -and (Test-Path $env:SIG_PATH)) { & $mc cp "$env:SIG_PATH" $dest }
 
           # Publish latest.json at bucket root
           & $mc cp "$env:LATEST_JSON_PATH" "s3/avrix-launcher/latest.json"
