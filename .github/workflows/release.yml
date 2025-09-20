@@ -127,26 +127,23 @@ jobs:
           # Build updater.iss (expects NEW_VERSION via GetEnv("NEW_VERSION"))
           & "$iscc" "installer\\updater.iss"
           $ver = "$env:NEW_VERSION"
-          # Locate resulting updater exe
-          $candidate = Get-ChildItem -Recurse -Path installer -Filter "*$ver*.exe" |
-            Where-Object { $_.FullName -notmatch 'Setup' -and $_.FullName -match '(?i)update|updater' } |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-          if (-not $candidate) {
-            # Fallback to most recent exe under installer\Output not being the Setup one
-            $candidate = Get-ChildItem -Recurse -Path installer\Output -Filter "*.exe" |
-              Where-Object { $_.FullName -notmatch 'Setup' } |
-              Sort-Object LastWriteTime -Descending |
-              Select-Object -First 1
+          # Compute expected output based on updater.iss (OutputDir=Output, OutputBaseFilename=Avrix-Update-{#AppVersion})
+          $outDir = (Resolve-Path "installer/Output").Path
+          $expectedName = "Avrix-Update-$ver.exe"
+          $expectedPath = Join-Path -Path $outDir -ChildPath $expectedName
+          if (-not (Test-Path $expectedPath)) {
+            Write-Host "Updater expected at: $expectedPath"
+            Write-Host "Listing installer/Output for diagnostics:"
+            Get-ChildItem -Path $outDir -Filter *.exe | Select-Object FullName, Length, LastWriteTime | Format-Table | Out-String | Write-Host
+            throw "Updater executable not found after compilation"
           }
-          if (-not $candidate) { throw "Updater executable not found after compilation" }
 
           $targetName = "Avrix Launcher-Updater-$ver.exe"
-          $targetPath = Join-Path -Path (Resolve-Path "installer/Output").Path -ChildPath $targetName
+          $targetPath = Join-Path -Path $outDir -ChildPath $targetName
           # Ensure directory exists
           $null = New-Item -ItemType Directory -Force -Path (Split-Path -Path $targetPath)
           # Move/rename to the desired name
-          Move-Item -Force -Path $candidate.FullName -Destination $targetPath
+          Move-Item -Force -Path $expectedPath -Destination $targetPath
 
           echo "UPDATER_EXE_PATH=$targetPath" >> $env:GITHUB_ENV
 

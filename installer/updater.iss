@@ -11,7 +11,7 @@
 
 [Setup]
 ; IMPORTANT: Use the SAME AppId as the main installer so Windows treats this as the same product
-AppId={{E6E1BBA2-4D5A-44C3-9A3B-08F9E8D5A16F}
+AppId={{E6E1BBA2-4D5A-44C3-9A3B-08F9E8D5A16F}}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
