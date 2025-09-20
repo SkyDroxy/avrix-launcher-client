@@ -9,6 +9,9 @@ export interface SettingsModel {
   memPreset: MemPreset;
   memoryMB: number; // exact memory amount in MB
   autoCheckUpdates?: boolean;
+  autoWorkshopScanOnStartup?: boolean;
+  autoWorkshopInstall?: boolean;
+  autoWorkshopUpdate?: boolean;
 }
 
 // Use the settings file next to the executable; path is provided by backend
@@ -29,6 +32,9 @@ async function ensureStore(): Promise<LazyStore> {
 const memPreset = ref<MemPreset>('auto');
 const memoryMB = ref<number>(0);
 const autoCheckUpdates = ref<boolean>(true);
+const autoWorkshopScanOnStartup = ref<boolean>(false);
+const autoWorkshopInstall = ref<boolean>(false);
+const autoWorkshopUpdate = ref<boolean>(false);
 
 // Helpers to translate between presets and MB for migration/UI convenience
 function presetToMb(p: MemPreset): number {
@@ -80,6 +86,13 @@ export function useSettings() {
       const ac = (await s.get<boolean>('autoCheckUpdates')) as boolean | null;
       if (typeof ac === 'boolean') autoCheckUpdates.value = ac;
 
+      const aws = (await s.get<boolean>('autoWorkshopScanOnStartup')) as boolean | null;
+      if (typeof aws === 'boolean') autoWorkshopScanOnStartup.value = aws;
+      const awi = (await s.get<boolean>('autoWorkshopInstall')) as boolean | null;
+      if (typeof awi === 'boolean') autoWorkshopInstall.value = awi;
+      const awu = (await s.get<boolean>('autoWorkshopUpdate')) as boolean | null;
+      if (typeof awu === 'boolean') autoWorkshopUpdate.value = awu;
+
       await s.save();
     } catch (e) {
       // ignore; use defaults
@@ -92,6 +105,9 @@ export function useSettings() {
     await s.set('memPreset', memPreset.value);
     await s.set('memoryMB', memoryMB.value || presetToMb(memPreset.value));
     await s.set('autoCheckUpdates', autoCheckUpdates.value);
+    await s.set('autoWorkshopScanOnStartup', autoWorkshopScanOnStartup.value);
+    await s.set('autoWorkshopInstall', autoWorkshopInstall.value);
+    await s.set('autoWorkshopUpdate', autoWorkshopUpdate.value);
     await s.save();
   }
 
@@ -99,6 +115,9 @@ export function useSettings() {
     memPreset,
     memoryMB,
     autoCheckUpdates,
+    autoWorkshopScanOnStartup,
+    autoWorkshopInstall,
+    autoWorkshopUpdate,
     load,
     save,
     mbToPreset,

@@ -7,6 +7,11 @@ use crate::{
 use anyhow::{anyhow, Result};
 use std::path::PathBuf;
 use tauri::Emitter;
+use std::{fs, io::Write};
+use std::io::{Read};
+use zip::{ZipArchive, ZipWriter};
+use zip::write::FileOptions;
+use zip::CompressionMethod;
 
 pub fn install_plugin_local(path: String, window: tauri::Window) -> Result<String> {
     let emit = |m: &str| {
@@ -46,6 +51,16 @@ pub fn install_plugin_local(path: String, window: tauri::Window) -> Result<Strin
         error("install", &format!("Copy error: {}", e));
         anyhow!(e)
     })?;
+    // Persist workshop mapping and embed workshopId into metadata if source is from a workshop directory.
+    // IMPORTANT: Rewrite is done asynchronously to avoid blocking the UI thread.
+    if let Some(ws_id) = infer_workshop_id(&src) {
+        let _ = persist_workshop_mapping(&plugins_dir, dest.file_name().and_then(|n| n.to_str()).unwrap_or(""), &ws_id);
+        let dest_clone = dest.clone();
+        let ws_clone = ws_id.clone();
+        std::thread::spawn(move || {
+            let _ = rewrite_metadata_workshop_id(&dest_clone, &ws_clone);
+        });
+    }
     emit("Done");
     Ok(format!("Plugin installed: {}", dest.to_string_lossy()))
 }
@@ -263,4 +278,97 @@ pub fn validate_plugin_from_url(url: String) -> Result<ValidationMetadata> {
         sha256: Some(sha256),
         message: "Invalid metadata.yml".into(),
     })
+}
+
+fn infer_workshop_id(path: &std::path::Path) -> Option<String> {
+    let comps: Vec<String> = path
+        .components()
+        .filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string()))
+        .collect();
+    for (i, seg) in comps.iter().enumerate() {
+        if seg.eq_ignore_ascii_case("content") {
+            if i + 2 < comps.len() && comps[i + 1] == "108600" {
+                let id = comps[i + 2].clone();
+                if id.chars().all(|ch| ch.is_ascii_digit()) {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn persist_workshop_mapping(plugins_dir: &std::path::Path, file_name: &str, id: &str) -> Result<()> {
+    let map_path = plugins_dir.join("workshop-map.json");
+    let mut map: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+    if map_path.exists() {
+        if let Ok(data) = std::fs::read_to_string(&map_path) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
+                if let Some(obj) = v.as_object() {
+                    map = obj.clone();
+                }
+            }
+        }
+    }
+    map.insert(file_name.to_string(), serde_json::Value::String(id.to_string()));
+    let s = serde_json::to_string_pretty(&serde_json::Value::Object(map))?;
+    let mut f = fs::File::create(&map_path)?;
+    f.write_all(s.as_bytes())?;
+    Ok(())
+}
+
+fn rewrite_metadata_workshop_id(jar_path: &std::path::Path, workshop_id: &str) -> Result<()> {
+    // Open the existing jar
+    let file = fs::File::open(jar_path)?;
+    let mut zip = ZipArchive::new(file)?;
+
+    // Create a temp output jar
+    let mut tmp_path = jar_path.to_path_buf();
+    tmp_path.set_extension("jar.tmp");
+    let tmp_file = fs::File::create(&tmp_path)?;
+    let mut writer = ZipWriter::new(tmp_file);
+    let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+
+    // Copy entries, rewriting metadata.yml if found
+    for i in 0..zip.len() {
+        let mut zf = zip.by_index(i)?;
+        let name = zf.name().to_string();
+        if name.ends_with('/') {
+            // Directory entry (optional, ZipWriter can infer from file paths). Keep to preserve structure.
+            writer.add_directory(&name, options)?;
+            continue;
+        }
+
+        let mut buf: Vec<u8> = Vec::new();
+        zf.read_to_end(&mut buf)?;
+
+        // Check for metadata.yml at root or in subfolder
+        let is_metadata = name.eq_ignore_ascii_case("metadata.yml") || name.to_ascii_lowercase().ends_with("/metadata.yml");
+        if is_metadata {
+            // Try to parse YAML and inject workshopId keys
+            if let Ok(mut val) = serde_yaml::from_slice::<serde_yaml::Value>(&buf) {
+                if let Some(obj) = val.as_mapping_mut() {
+                    use serde_yaml::{Value};
+                    // Insert both camelCase and snake_case for maximum compatibility
+                    obj.insert(Value::String("workshopId".to_string()), Value::String(workshop_id.to_string()));
+                    obj.insert(Value::String("workshop_id".to_string()), Value::String(workshop_id.to_string()));
+                    if let Ok(s) = serde_yaml::to_string(&val) {
+                        buf = s.into_bytes();
+                    }
+                }
+            }
+        }
+
+        writer.start_file(name, options)?;
+        writer.write_all(&buf)?;
+    }
+
+    writer.finish()?;
+
+    // Replace original jar safely on Windows: remove then rename
+    drop(zip);
+    // Remove original and replace
+    fs::remove_file(jar_path)?;
+    fs::rename(&tmp_path, jar_path)?;
+    Ok(())
 }

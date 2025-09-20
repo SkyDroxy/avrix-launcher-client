@@ -3,16 +3,17 @@
     <transition name="modal-fade-scale">
       <div
         v-if="modelValue"
-        class="fixed inset-0 z-50 flex justify-center p-6 md:p-10 overflow-y-auto"
-        :class="containerAlign"
+        class="fixed inset-0 z-50 flex justify-center p-6 md:p-10"
+        :class="[containerAlign, outerScrollClass]"
       >
         <!-- Backdrop -->
         <div class="fixed inset-0 modal-backdrop" @click="onBackdrop" />
         <!-- Panel -->
         <div
           ref="panelRef"
-          class="relative mt-14 md:mt-4 rounded-xl border modal-panel flex flex-col max-h-[86vh] overflow-hidden"
+          class="relative mt-14 md:mt-4 rounded-xl border modal-panel flex flex-col max-h-[86vh] md:max-h-[88vh] overflow-hidden"
           :class="widthClass"
+          :style="panelStyle"
           role="dialog"
           aria-modal="true"
           :aria-labelledby="computedLabelId"
@@ -44,7 +45,8 @@
             </UiButton>
           </header>
           <div
-            class="px-5 py-5 overflow-auto text-[13px] leading-relaxed space-y-4 custom-scroll modal-body"
+            class="px-5 py-5 text-[13px] leading-relaxed space-y-4 custom-scrollbar modal-body flex-1 min-h-0"
+            :class="props.bodyScrollable ? 'overflow-auto' : 'overflow-hidden'"
           >
             <p
               v-if="$slots.description"
@@ -81,6 +83,8 @@ const props = withDefaults(
     closable?: boolean;
     closeOnBackdrop?: boolean;
     closeLabel?: string;
+    bodyScrollable?: boolean;
+    panelHeight?: string; // e.g., '70vh' or '600px' for a fixed-height panel
   }>(),
   {
     width: 'sm',
@@ -89,6 +93,8 @@ const props = withDefaults(
     closeOnBackdrop: true,
     closeLabel: 'Fermer',
     title: undefined,
+    bodyScrollable: true,
+    panelHeight: undefined,
   }
 );
 
@@ -114,6 +120,17 @@ const widthClass = computed(() => {
 const containerAlign = computed(() =>
   props.placement === 'center' ? 'items-center' : 'items-start'
 );
+
+const outerScrollClass = computed(() =>
+  props.panelHeight ? 'overflow-hidden' : 'overflow-y-auto'
+);
+
+const panelStyle = computed(() => {
+  if (props.panelHeight) {
+    return { height: props.panelHeight } as Record<string, string>;
+  }
+  return {} as Record<string, string>;
+});
 
 const computedLabelId = `modal-title-${Math.random().toString(36).slice(2)}`;
 const descriptionId = `modal-desc-${Math.random().toString(36).slice(2)}`;

@@ -58,19 +58,45 @@
         </UiButton>
       </div>
       <div class="flex items-center justify-between opacity-60 text-[10px] mt-1">
-        <span v-if="plugin.author" class="truncate" :title="plugin.author"
-          ><Icon name="mingcute:user-4-fill" :width="14" /> {{ plugin.author }}</span
-        >
-        <span v-else class="italic text-neutral-500">Auteur ?</span>
-        <UiBadge v-if="plugin.environment" variant="gray" size="xs" class="uppercase tracking-wide">
-          {{ plugin.environment }}
-        </UiBadge>
+        <div class="flex items-center gap-2 min-w-0">
+          <span v-if="plugin.author" class="truncate" :title="plugin.author"
+            ><Icon name="mingcute:user-4-fill" :width="14" /> {{ plugin.author }}</span
+          >
+          <span v-else class="italic text-neutral-500">Auteur ?</span>
+          <UiBadge
+            v-if="plugin.workshopId"
+            variant="indigo"
+            size="xs"
+            class="uppercase tracking-wide cursor-pointer"
+            @click="openWorkshop(plugin.workshopId)"
+            title="Ouvrir l'item Workshop"
+          >
+            WORKSHOP
+          </UiBadge>
+        </div>
+        <div class="flex items-center gap-2">
+          <UiBadge
+            v-if="plugin.environment"
+            :variant="
+              plugin.environment == 'client'
+                ? 'info'
+                : plugin.environment == 'server'
+                  ? 'warning'
+                  : 'gray'
+            "
+            size="xs"
+            class="uppercase tracking-wide"
+          >
+            {{ plugin.environment }}
+          </UiBadge>
+        </div>
       </div>
     </div>
   </div>
 </template>
 <script setup lang="ts">
 import { displayName, versionOf, formatSize, fullDate, shortDate } from '@helpers/pluginFormat';
+import { invoke } from '@tauri-apps/api/core';
 import { computed, ref, watchEffect } from 'vue';
 
 import Icon from '@/components/common/Icon.vue';
@@ -101,8 +127,20 @@ function onImgError(e: Event) {
 function onImgLoad(e: Event) {
   const el = e.target as HTMLImageElement;
   if (!el) return;
-  // Accept any image dimensions; object-cover will crop to a square view.
-  // If you want to enforce strict 1:1 only, re-enable a tolerant check here.
+}
+
+async function openWorkshop(id?: string) {
+  if (!id) return;
+  try {
+    await invoke('open_external', { url: `steam://url/CommunityFilePage/${id}` });
+  } catch (_) {
+    // Fallback to web URL if Steam protocol fails
+    try {
+      await invoke('open_external', {
+        url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${id}`,
+      });
+    } catch (_) {}
+  }
 }
 </script>
 <style scoped>

@@ -38,6 +38,18 @@
 
     <!-- Version selection modal (reusable component) -->
     <VersionSelectModal v-model="showVersionModal" @confirm="onVersionModalConfirm" />
+
+    <!-- Missing game modal -->
+    <ConfirmModal
+      v-model="showMissingGameModal"
+      title="Jeu introuvable"
+      :message="missingGameMessage"
+      confirm-label="Ouvrir dans Steam"
+      cancel-label="Fermer"
+      @cancel="showMissingGameModal = false"
+      @update:model-value="onMissingModalUpdate"
+      @confirm="openSteamStore"
+    />
   </div>
 </template>
 <script setup lang="ts">
@@ -47,6 +59,7 @@ import { NewsTag } from '@common/enums/NewsTag';
 import LaunchCard from '@components/launch/LaunchCard.vue';
 import NewsCard from '@components/launch/NewsCard.vue';
 import UiButton from '@components/ui/buttons/UiButton.vue';
+import ConfirmModal from '@components/ui/overlays/ConfirmModal.vue';
 import VersionSelectModal from '@components/versions/modals/VersionSelectModal.vue';
 import { useSettings } from '@composables/useSettings';
 import { useToasts } from '@composables/useToasts';
@@ -64,6 +77,10 @@ const { memoryMB, load: loadSettings } = useSettings();
 // Version selection modal if none selected
 const showVersionModal = ref(false);
 const pendingLaunchAfterSelect = ref(false);
+// Missing game modal state
+const showMissingGameModal = ref(false);
+const missingGameMessage =
+  "Le jeu Project Zomboid n'est pas installé à cet emplacement. Vous pouvez sélectioner un autre emplacement dans les paramètres.\n\nSi vous ne possédez pas le jeu, vous pouvez l'acheter et l'installer via Steam.";
 
 async function ensureVersionSelected() {
   try {
@@ -125,7 +142,14 @@ async function doLaunchGame() {
     if (res && typeof res === 'string' && res.startsWith('[Erreur]')) error.value = res;
     else emit('launched');
   } catch (e) {
-    error.value = String(e);
+    const msg = String(e);
+    if (msg.includes('[GameMissing]')) {
+      // Show modal instead of toast
+      showMissingGameModal.value = true;
+      error.value = '';
+    } else {
+      error.value = msg;
+    }
   } finally {
     loading.value = false;
     pendingLaunchAfterSelect.value = false;
@@ -158,6 +182,25 @@ watch(
     if (msg) toastError(msg);
   }
 );
+
+async function openSteamStore() {
+  try {
+    await invoke('open_external', { url: 'steam://store/108600' });
+  } catch (_) {
+    // Fallback to web URL if Steam protocol fails
+    try {
+      await invoke('open_external', {
+        url: 'https://store.steampowered.com/app/108600/Project_Zomboid/',
+      });
+    } catch (_) {}
+  } finally {
+    showMissingGameModal.value = false;
+  }
+}
+
+function onMissingModalUpdate(v: boolean) {
+  if (!v) error.value = '';
+}
 </script>
 
 <style scoped>

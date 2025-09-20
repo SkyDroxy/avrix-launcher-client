@@ -1,10 +1,9 @@
 use crate::logger::{emit_app_log, error, info, Level};
-use crate::util::find_game_root;
 use anyhow::{anyhow, Result};
 use std::{
     fs,
     io::{BufRead, BufReader},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 use tauri::{AppHandle, Emitter, Manager, Window};
@@ -18,6 +17,8 @@ pub fn launch_game(window: Window, steam: bool, mem_mb: Option<u64>) -> Result<S
     let core_jar = ctx
         .core_jar
         .ok_or_else(|| anyhow!("[Error] Avrix-Core.jar not found."))?;
+    // Preflight: ensure Project Zomboid binaries are present in the game root
+    ensure_game_binaries_exist(&ctx.work_dir)?;
     let emit = |lvl: Level, m: &str| {
         match lvl {
             Level::Info => info("launch", m),
@@ -118,7 +119,8 @@ struct LaunchContext {
 
 fn resolve_launch_context(app: AppHandle) -> Result<LaunchContext> {
     let base = std::env::current_dir()?;
-    let game_root = find_game_root(&base).unwrap_or(base.clone());
+    // Use effective game root (override if present, else autodetect)
+    let game_root = crate::util::get_effective_game_root(&app);
     // Try selected version folder
     let version_dir: Option<PathBuf> = crate::versions::resolve_selected_version_dir(&app);
     if let Some(ref vd) = version_dir {
@@ -216,6 +218,25 @@ fn resolve_launch_context(app: AppHandle) -> Result<LaunchContext> {
         library_path,
         java_path,
     })
+}
+
+/// Ensures that in the given game root, either the 64-bit pair (exe+bat) or the 32-bit pair exists.
+fn ensure_game_binaries_exist(game_root: &Path) -> Result<()> {
+    let pz64_exe = game_root.join("ProjectZomboid64.exe");
+    let pz64_bat = game_root.join("ProjectZomboid64.bat");
+    let pz32_exe = game_root.join("ProjectZomboid32.exe");
+    let pz32_bat = game_root.join("ProjectZomboid32.bat");
+
+    let has_64 = pz64_exe.exists() && pz64_bat.exists();
+    let has_32 = pz32_exe.exists() && pz32_bat.exists();
+
+    if has_64 || has_32 {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "[GameMissing] Project Zomboid n'est pas installé sur cet emplacement.\nVeuillez installer le jeu via Steam pour continuer."
+        ))
+    }
 }
 
 fn find_java(version_dir: Option<&PathBuf>) -> Result<PathBuf> {

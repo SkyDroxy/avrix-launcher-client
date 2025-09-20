@@ -8,6 +8,7 @@ export interface PluginInfo {
   author?: string;
   license?: string;
   id?: string;
+  workshopId?: string;
   description?: string;
   dependencies?: Record<string, string>;
   image?: string;

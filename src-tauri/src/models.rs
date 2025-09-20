@@ -20,6 +20,7 @@ pub struct PluginEntry {
     pub author: Option<String>,
     pub license: Option<String>,
     pub id: Option<String>,
+    pub workshop_id: Option<String>,
     pub description: Option<String>,
     pub dependencies: Option<HashMap<String, String>>,
     pub image: Option<String>,

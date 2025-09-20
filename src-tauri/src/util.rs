@@ -2,7 +2,8 @@ use crate::logger::{emit_app_log, info, warn};
 use anyhow::Result;
 use base64::Engine as _;
 use std::io::Read;
-use std::{fs, path::PathBuf};
+use std::{fs, path::{Path, PathBuf}};
+use tauri_plugin_store::StoreExt;
 use tauri::{Emitter, Window};
 use zip::ZipArchive;
 
@@ -86,6 +87,40 @@ fn contains_game_dirs(base: &PathBuf) -> bool {
     ["zombie", "se", "fmod", "javax"]
         .iter()
         .all(|d| base.join(d).is_dir())
+}
+
+/// Light-weight validity check for a Project Zomboid installation directory.
+pub fn is_valid_game_root_dir(dir: &Path) -> bool {
+    if !dir.is_dir() { return false; }
+    // Accept if we find common subdirs OR the startup binaries.
+    let has_dirs = ["zombie", "se", "fmod", "javax"].iter().all(|d| dir.join(d).is_dir());
+    let has_bins64 = dir.join("ProjectZomboid64.exe").is_file() && dir.join("ProjectZomboid64.bat").is_file();
+    let has_bins32 = dir.join("ProjectZomboid32.exe").is_file() && dir.join("ProjectZomboid32.bat").is_file();
+    has_dirs || has_bins64 || has_bins32
+}
+
+/// Returns the effective game root, preferring a user override stored in the settings store.
+/// If invalid or missing, falls back to autodetection from the current directory upwards.
+pub fn get_effective_game_root(app: &tauri::AppHandle) -> PathBuf {
+    // First, try override from store near exe
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir()));
+    let store_path = exe_dir.join("avrix-settings.json");
+    if let Ok(store) = app.store(&store_path) {
+        if let Some(v) = store.get("gameRoot") {
+            if let Some(s) = v.as_str() {
+                let p = PathBuf::from(s);
+                if is_valid_game_root_dir(&p) {
+                    return p;
+                }
+            }
+        }
+    }
+    // Fallback to autodetect from current dir
+    let base = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+    find_game_root(&base).unwrap_or(base)
 }
 
 pub fn parse_name_version_simple(file_name: &str) -> Option<(String, String)> {
@@ -276,6 +311,7 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
                                 None
                             }
                         }),
+                    workshop_id: None,
                     internal: Some(false),
                     parent_id: None,
                 });
@@ -439,6 +475,7 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
                                                 dependencies: raw_ip.dependencies.clone(),
                                                 image,
                                                 image_url,
+                                                workshop_id: None,
                                                 internal: Some(true),
                                                 parent_id: raw_ip
                                                     .parent
@@ -462,6 +499,22 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
 
     if plugins_dir.exists() {
         emit("Scanning external plugins (.jar)...");
+        // Load persisted workshop mapping if present
+        let mut ws_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let map_path = plugins_dir.join("workshop-map.json");
+        if std::path::Path::new(&map_path).exists() {
+            if let Ok(s) = std::fs::read_to_string(&map_path) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
+                    if let Some(obj) = v.as_object() {
+                        for (k, vv) in obj.iter() {
+                            if let Some(id) = vv.as_str() {
+                                ws_map.insert(k.clone(), id.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
         for entry in fs::read_dir(&plugins_dir)? {
             let e = entry?;
             let p = e.path();
@@ -484,6 +537,14 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
                         modified,
                         ..Default::default()
                     };
+                    // If path under a workshop folder, attempt to infer workshop item ID
+                    if let Some(ws) = infer_workshop_id(&p) {
+                        entry.workshop_id = Some(ws);
+                    } else if let Some(fname) = p.file_name().and_then(|n| n.to_str()) {
+                        if let Some(saved) = ws_map.get(fname) {
+                            entry.workshop_id = Some(saved.clone());
+                        }
+                    }
                     if let Ok((m, base)) = metadata::extract_metadata_with_base_from_jar(&p) {
                         emit(&format!("   -> Extracted metadata for {}", name));
                         entry.display_name = m.name.clone();
@@ -621,6 +682,25 @@ pub fn scan_plugins(window: &Window) -> Result<crate::models::PluginsResult> {
         plugins: out,
         dir: plugins_dir.to_string_lossy().to_string(),
     })
+}
+
+fn infer_workshop_id(path: &std::path::Path) -> Option<String> {
+    // Looking for segments .../workshop/content/108600/<itemId>/...
+    let comps: Vec<String> = path
+        .components()
+        .filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string()))
+        .collect();
+    for (i, seg) in comps.iter().enumerate() {
+        if seg.eq_ignore_ascii_case("content") {
+            if i + 2 < comps.len() && comps[i + 1] == "108600" {
+                let id = comps[i + 2].clone();
+                if id.chars().all(|ch| ch.is_ascii_digit()) {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    None
 }
 
 pub fn delete_plugin(name: String) -> Result<String> {

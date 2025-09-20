@@ -5,6 +5,8 @@
     placement="center"
     :closable="true"
     :close-on-backdrop="true"
+    :body-scrollable="false"
+    panel-height="70vh"
   >
     <template #title>
       <div class="flex items-center gap-2">
@@ -13,9 +15,9 @@
       </div>
     </template>
 
-    <div class="flex min-h-[320px]">
+    <div class="flex min-h-[320px] h-full">
       <!-- Categories -->
-      <aside class="w-56 pr-4 border-r border-neutral-700/60">
+      <aside class="w-56 pr-4 border-r border-neutral-700/60 custom-scrollbar min-h-0">
         <nav class="space-y-1">
           <button
             v-for="cat in categories"
@@ -31,8 +33,9 @@
       </aside>
 
       <!-- Content -->
-      <section class="flex-1 pl-4">
+      <section class="flex-1 pl-4 custom-scrollbar min-h-0">
         <SettingsSectionGame v-if="current === 'game'" />
+        <SettingsSectionPlugins v-else-if="current === 'plugins'" />
         <SettingsSectionUpdates v-else-if="current === 'updates'" />
         <SettingsSectionAbout v-else />
       </section>
@@ -43,6 +46,7 @@
 import Icon from '@components/common/Icon.vue';
 import SettingsSectionAbout from '@components/settings/sections/SettingsSectionAbout.vue';
 import SettingsSectionGame from '@components/settings/sections/SettingsSectionGame.vue';
+import SettingsSectionPlugins from '@components/settings/sections/SettingsSectionPlugins.vue';
 import SettingsSectionUpdates from '@components/settings/sections/SettingsSectionUpdates.vue';
 import BaseModal from '@components/ui/overlays/BaseModal.vue';
 import { computed, ref } from 'vue';
@@ -54,11 +58,16 @@ const open = computed({
   set: (v: boolean) => emit('update:modelValue', v),
 });
 
-type CatKey = 'game' | 'updates' | 'about';
+type CatKey = 'game' | 'plugins' | 'updates' | 'about';
 const categories: Array<{ key: CatKey; label: string; icon: string }> = [
   { key: 'game', label: 'Jeu', icon: 'mingcute:game-2-fill' },
+  { key: 'plugins', label: 'Plugins', icon: 'mingcute:plugin-2-fill' },
   { key: 'updates', label: 'Mises à jour', icon: 'mingcute:refresh-2-fill' },
   { key: 'about', label: 'À propos', icon: 'mingcute:information-fill' },
 ];
 const current = ref<CatKey>('game');
 </script>
+
+<style scoped>
+/* No local styles; uses global .custom-scrollbar from src/style.css */
+</style>

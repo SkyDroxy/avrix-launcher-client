@@ -103,10 +103,101 @@ fn get_settings_path() -> Result<String, String> {
     Ok(path.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+fn open_external(window: tauri::Window, url: String) -> Result<(), String> {
+    info("main", &format!("open_external invoked (url={})", url));
+    let _ = window;
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GameRootInfo {
+    effective: String,
+    detected: String,
+    override_path: Option<String>,
+    is_override_valid: bool,
+}
+
+#[tauri::command]
+fn get_game_root_info(app: tauri::AppHandle) -> Result<GameRootInfo, String> {
+    use tauri_plugin_store::StoreExt;
+    let effective = crate::util::get_effective_game_root(&app);
+    let base = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+    let detected = match crate::util::find_game_root(&base) {
+        Some(p) => p.to_string_lossy().to_string(),
+        None => String::new(),
+    };
+
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .ok_or_else(|| "Cannot determine executable directory".to_string())?;
+    let store_path = exe_dir.join("avrix-settings.json");
+    let store = app.store(&store_path).map_err(|e| e.to_string())?;
+    let override_path = store
+        .get("gameRoot")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+    let is_override_valid = override_path
+        .as_ref()
+        .map(|s| crate::util::is_valid_game_root_dir(std::path::Path::new(s)))
+        .unwrap_or(false);
+
+    Ok(GameRootInfo {
+        effective: effective.to_string_lossy().to_string(),
+        detected,
+        override_path,
+        is_override_valid,
+    })
+}
+
+#[tauri::command]
+fn set_game_root(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_store::StoreExt;
+    let p = std::path::PathBuf::from(&path);
+    if !crate::util::is_valid_game_root_dir(&p) {
+        return Err("Dossier Project Zomboid invalide: les fichiers .exe et .bat requis sont introuvables.".into());
+    }
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .ok_or_else(|| "Cannot determine executable directory".to_string())?;
+    let store_path = exe_dir.join("avrix-settings.json");
+    let store = app.store(&store_path).map_err(|e| e.to_string())?;
+    store.set("gameRoot", serde_json::Value::String(path));
+    store.save().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_game_root_override(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_store::StoreExt;
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .ok_or_else(|| "Cannot determine executable directory".to_string())?;
+    let store_path = exe_dir.join("avrix-settings.json");
+    let store = app.store(&store_path).map_err(|e| e.to_string())?;
+    if store.get("gameRoot").is_some() {
+        store.delete("gameRoot");
+        store.save().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn validate_game_root(path: String) -> Result<(), String> {
+    let p = std::path::PathBuf::from(path);
+    if crate::util::is_valid_game_root_dir(&p) {
+        Ok(())
+    } else {
+        Err("Dossier Project Zomboid invalide.".into())
+    }
+}
+
 fn main() {
     info("main", "Avrix Launcher starting up");
     tauri::Builder::default()
-        .plugin(tauri_plugin_stronghold::Builder::new(|pass| todo!()).build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
@@ -140,6 +231,11 @@ fn main() {
             validate_plugin_from_url,
             delete_plugin,
             get_settings_path,
+            open_external,
+            get_game_root_info,
+            set_game_root,
+            clear_game_root_override,
+            validate_game_root,
             versions::list_versions,
             versions::list_available_versions,
             versions::install_version_local,
