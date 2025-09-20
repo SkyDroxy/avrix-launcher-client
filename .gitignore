@@ -33,3 +33,4 @@ Thumbs.db
 .idea/
 /installer/Output
 /installer/payload/build
+/src-tauri/Cargo.lock
