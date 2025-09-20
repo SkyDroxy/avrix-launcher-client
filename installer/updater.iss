@@ -58,9 +58,6 @@ begin
   end
   else
   begin
-    { If not found, fail fast with a clear message. The updater is not meant to pick a path. }
-    MsgBox('Impossible de trouver le dossier d\'installation d\'Avrix dans le registre.'#13#10 +
-           'Clé attendue: HKCU\\Software\\Avrix\\Avrix Launcher (valeur par défaut).', mbCriticalError, MB_OK);
     Result := '';
   end;
 end;
