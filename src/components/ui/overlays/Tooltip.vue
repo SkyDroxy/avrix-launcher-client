@@ -15,10 +15,10 @@
           :style="styleObject"
         >
           <div
-            class="rounded-md px-2.5 py-1.5 text-[11px] font-medium leading-snug shadow-lg border bg-neutral-800/95 backdrop-blur-sm border-neutral-600/60 text-neutral-50 flex items-center gap-1"
+            class="rounded-md px-2.5 py-1.5 text-[11px] font-medium leading-snug shadow-lg border bg-neutral-800/95 backdrop-blur-sm border-neutral-600/60 text-neutral-50 flex items-start gap-1 max-w-[28rem]"
           >
             <slot name="icon" />
-            <span class="whitespace-nowrap"
+            <span class="whitespace-pre-wrap break-words"
               ><slot name="content">{{ text }}</slot></span
             >
           </div>

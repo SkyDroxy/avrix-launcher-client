@@ -106,10 +106,17 @@ fn get_settings_path() -> Result<String, String> {
 fn main() {
     info("main", "Avrix Launcher starting up");
     tauri::Builder::default()
-        .plugin(tauri_plugin_stronghold::Builder::new(|_| {
-            let pass = std::env::var("STRONGHOLD_PASSWORD").unwrap_or_else(|_| "avrix-stronghold".to_string());
-            pass.into_bytes()
-        }).build())
+        .plugin(tauri_plugin_stronghold::Builder::new(|pass| todo!()).build())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(
+            tauri_plugin_stronghold::Builder::new(|_| {
+                let pass = std::env::var("STRONGHOLD_PASSWORD")
+                    .unwrap_or_else(|_| "avrix-stronghold".to_string());
+                pass.into_bytes()
+            })
+            .build(),
+        )
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())

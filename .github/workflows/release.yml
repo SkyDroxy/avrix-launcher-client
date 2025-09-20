@@ -156,16 +156,20 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if (-not $env:UPDATER_EXE_PATH) { throw "UPDATER_EXE_PATH not set" }
           $sigOut = "$env:UPDATER_EXE_PATH.sig"
-          # Use Tauri signer to create a signature compatible with the updater. It prints the signature to stdout.
-          $sig = pnpm --silent tauri signer sign --private-key "$env:TAURI_SIGNING_PRIVATE_KEY" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" "$env:UPDATER_EXE_PATH" 2>&1
-          if ($LASTEXITCODE -ne 0) {
+          # Use Tauri signer to create a minisign-formatted signature and write it as-is
+          $raw = pnpm --silent tauri signer sign --private-key "$env:TAURI_SIGNING_PRIVATE_KEY" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" "$env:UPDATER_EXE_PATH"
+          if ($LASTEXITCODE -ne 0 -or -not $raw) {
             Write-Host "tauri signer failed with exit code $LASTEXITCODE"
-            Write-Host ($sig | Out-String)
             throw "Failed to obtain signature from tauri signer"
           }
-          # Take the last non-empty line to avoid any incidental noise
-          $sig = ($sig | Where-Object { $_ -and $_.Trim().Length -gt 0 } | Select-Object -Last 1).Trim()
-          if (-not $sig) { throw "Failed to obtain signature from tauri signer" }
+          # Keep only minisign-valid lines: comments and base64 blocks. Drop any instruction text.
+          $lines = $raw -split "\r?\n"
+          $filtered = $lines | Where-Object { $_ -and ($_ -match '^(untrusted comment:|trusted comment:|[A-Za-z0-9+/=]+)$') }
+          if (-not $filtered -or -not ($filtered | Where-Object { $_ -like 'untrusted comment:*' })) {
+            Write-Host "Unexpected signature output:"; Write-Host ($raw | Out-String)
+            throw "Unexpected signature format from tauri signer"
+          }
+          $sig = ($filtered -join "`n")
           Set-Content -Path $sigOut -Value $sig -Encoding ASCII
           echo "UPDATER_SIG_PATH=$sigOut" >> $env:GITHUB_ENV
 
