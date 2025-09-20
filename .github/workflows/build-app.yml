@@ -57,6 +57,17 @@ jobs:
           echo "NEW_VERSION=$ver" >> $env:GITHUB_ENV
           echo "ver=$ver" >> $env:GITHUB_OUTPUT
 
+      - name: Prepare version artifact
+        shell: pwsh
+        run: |
+          Set-Content -Path version.txt -Value $env:NEW_VERSION -NoNewline -Encoding ASCII
+
+      - name: Upload version artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: version
+          path: version.txt
+
       - name: Build Tauri app
         run: pnpm tauri:build
 

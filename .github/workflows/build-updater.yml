@@ -1,27 +1,24 @@
 name: Build Avrix Updater
 
 on:
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - completed
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version (e.g. 0.2.7)'
-        required: true
-      exeUrl:
-        description: 'Optional URL to AvrixLauncher.exe to embed in updater.'
+      run_id:
+        description: 'Run ID of Build Avrix App to consume (optional)'
         required: false
-      buildApp:
-        type: boolean
-        default: false
-        description: 'Build Avrix app to produce AvrixLauncher.exe (if no exeUrl provided)'
-  push:
-    tags:
-      - 'v*.*.*'
+      version:
+        description: 'Version (e.g. 0.2.7) — optional when using run_id'
+        required: false
 
 jobs:
   build:
     runs-on: windows-latest
     env:
-      NEW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+      NEW_VERSION: ${{ inputs.version || '' }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
@@ -31,13 +28,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set version env when pushed by tag
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Require Release success
+        if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' }}
+        run: exit 1
+
+      - name: Download build-run-id artifact from Release
+        id: get_build_run
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: release.yml
+          run_id: ${{ github.event.workflow_run.id || inputs.run_id }}
+          name: build-run-id
+          path: .
+          check_artifacts: false
+
+      - name: Resolve Build App run id
+        id: resolve_run
         shell: pwsh
         run: |
-          # Expect tags like updater-0.2.7
-          $tag = '${{ github.ref_name }}'
-          if ($tag -match 'updater-(?<ver>.*)') { echo "NEW_VERSION=$($Matches['ver'])" >> $env:GITHUB_ENV }
+          $rid = "${{ inputs.run_id }}"
+          if (-not $rid -and (Test-Path './build-run-id.txt')) { $rid = Get-Content ./build-run-id.txt -Raw }
+          if (-not $rid) { throw 'Unable to resolve Build App run id. Provide inputs.run_id or ensure Release published build-run-id.' }
+          echo "rid=$rid" >> $env:GITHUB_OUTPUT
+
+      - name: Download version artifact
+        id: fetch_version
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: build-app.yml
+          run_id: ${{ steps.resolve_run.outputs.rid }}
+          name: version
+          path: .
+
+      - name: Set NEW_VERSION from artifact or input
+        shell: pwsh
+        run: |
+          if (Test-Path './version.txt') { $ver = Get-Content ./version.txt -Raw }
+          elseif ('${{ env.NEW_VERSION }}') { $ver = '${{ env.NEW_VERSION }}' }
+          else { throw 'Missing version' }
+          echo "NEW_VERSION=$ver" >> $env:GITHUB_ENV
 
       - name: Install Inno Setup
         shell: pwsh
@@ -52,19 +81,14 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path 'payload/build' -Force | Out-Null
 
-      - name: Download AvrixLauncher.exe from URL
-        if: ${{ github.event.inputs.exeUrl != '' }}
-        shell: pwsh
-        working-directory: installer/payload/build
-        run: |
-          Invoke-WebRequest '${{ github.event.inputs.exeUrl }}' -OutFile 'AvrixLauncher.exe'
-
       - name: Download Avrix EXE artifact
-        if: ${{ github.event.inputs.exeUrl == '' }}
-        uses: actions/download-artifact@v4
+        uses: dawidd6/action-download-artifact@v3
         with:
+          workflow: build-app.yml
+          run_id: ${{ steps.resolve_run.outputs.rid }}
           name: avrix-exe
           path: installer/payload/build
+          check_artifacts: true
 
       - name: Compile updater.iss
         shell: pwsh
@@ -120,3 +144,38 @@ jobs:
           if (Test-Path "${{ steps.find_output.outputs.path }}.sig") {
             & $mc cp "${{ steps.find_output.outputs.path }}.sig" (Join-Path $dest "Avrix-Update-$ver.exe.sig")
           }
+
+      - name: Generate latest.json from updater signature
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ver = "$env:NEW_VERSION"
+          $baseUrl = "https://s3.storage.skymunt.com/avrix-launcher"
+          $url = "$baseUrl/v$ver/Avrix-Update-$ver.exe"
+          $sigPath = "${{ steps.find_output.outputs.path }}.sig"
+          if (-not (Test-Path $sigPath)) { throw "Signature file not found for updater" }
+          $sig = (Get-Content $sigPath -Raw).Trim()
+          $pubDate = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+          $jsonObj = [ordered]@{
+            version   = $ver
+            notes     = ""
+            pub_date  = $pubDate
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = $sig
+                url       = $url
+              }
+            }
+          }
+          $json = $jsonObj | ConvertTo-Json -Depth 5
+          Set-Content -Path latest.json -Value $json -Encoding UTF8
+          echo "LATEST_JSON_PATH=$((Resolve-Path latest.json).Path)" >> $env:GITHUB_ENV
+
+      - name: Upload latest.json to MinIO
+        if: env.MINIO_ENDPOINT != '' && env.MINIO_ACCESS_KEY != '' && env.MINIO_SECRET_KEY != ''
+        shell: pwsh
+        run: |
+          $mc = "$PWD/mc.exe"
+          if (-not (Test-Path $mc)) { Invoke-WebRequest -Uri "https://dl.min.io/client/mc/release/windows-amd64/mc.exe" -OutFile $mc }
+          & $mc alias set s3 $env:MINIO_ENDPOINT $env:MINIO_ACCESS_KEY $env:MINIO_SECRET_KEY
+          & $mc cp "$env:LATEST_JSON_PATH" "s3/avrix-launcher/latest.json"
