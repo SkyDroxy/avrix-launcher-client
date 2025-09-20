@@ -46,6 +46,10 @@ Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
 ; Replace only the launcher EXE in the existing install folder
 Source: "payload\build\AvrixLauncher.exe"; DestDir: "{code:GetInstalledAvrixDir}"; Flags: ignoreversion
 
+[Run]
+; Relaunch the updated application silently after install completes
+Filename: "{code:GetInstalledAvrixDir}\{#AppExeName}"; WorkingDir: "{code:GetInstalledAvrixDir}"; Flags: nowait runasoriginaluser
+
 [Code]
 function GetInstalledAvrixDir(Param: string): string;
 var
