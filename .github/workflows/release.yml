@@ -1,18 +1,14 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: ["Build Avrix App"]
-    types:
-      - completed
   workflow_dispatch:
     inputs:
-      run_id:
-        description: 'Run ID of Build Avrix App to consume (optional)'
-        required: false
       version:
-        description: 'Version to release (e.g., 0.4.2 or v0.4.2) — optional when using run_id'
-        required: false
+        description: 'Version to release (e.g., 0.4.2 or v0.4.2)'
+        required: true
+  push:
+    tags:
+      - 'v*.*.*'
 
 permissions:
   contents: write
@@ -20,7 +16,6 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     env:
       AVRIX_UPDATER_ENDPOINT: 'https://s3.storage.skymunt.com/avrix-launcher/latest.json'
       AVRIX_UPDATER_PUBKEY: 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ0MDZEQzhEREQwQkEwNUMKUldSY29BdmRqZHdHMUVaR1ZFZWY3ZWJ6NnZ3T3Q5SU1GRGRXSVVOLzAxVGVtMTR4c1lyYmhGeEQK'
@@ -30,59 +25,52 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve source run and download artifacts
-        id: fetch
-        uses: dawidd6/action-download-artifact@v3
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
-          workflow: build-app.yml
-          run_id: ${{ inputs.run_id || github.event.workflow_run.id }}
-          name: avrix-exe
-          path: installer/payload/build
-          check_artifacts: true
+          version: 9
 
-      - name: Download NSIS bundle (optional)
-        id: fetch_nsis
-        uses: dawidd6/action-download-artifact@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          workflow: build-app.yml
-          run_id: ${{ inputs.run_id || github.event.workflow_run.id }}
-          name: nsis-bundle
-          path: dist/nsis
-          check_artifacts: false
-          if_no_artifact_found: warn
+          node-version: 22
+          cache: 'pnpm'
 
-      - name: Download version artifact
-        id: fetch_version
-        uses: dawidd6/action-download-artifact@v3
-        with:
-          workflow: build-app.yml
-          run_id: ${{ inputs.run_id || github.event.workflow_run.id }}
-          name: version
-          path: .
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Set NEW_VERSION from artifact or input
-        shell: pwsh
+      - name: Install Windows bundler dependencies (NSIS & WiX)
+        if: runner.os == 'Windows'
         run: |
-          if (Test-Path './version.txt') {
-            $ver = Get-Content ./version.txt -Raw
-          } elseif ('${{ inputs.version }}') {
-            $ver = '${{ inputs.version }}'.TrimStart('v')
-          } else {
-            throw 'Missing version: provide workflow_dispatch input.version or ensure version artifact exists'
-          }
+          choco install nsis -y
+          choco install wixtoolset -y
+          choco install innosetup -y
+
+      - name: Install Tauri CLI
+        run: pnpm add -D @tauri-apps/cli
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set default NEW_VERSION from package.json
+        run: |
+          $ver = node -e "console.log(require('./package.json').version)"
           echo "NEW_VERSION=$ver" >> $env:GITHUB_ENV
 
-      - name: Publish Build App run id for downstream
-        shell: pwsh
+      - name: Bump version from input (manual dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          $rid = "${{ inputs.run_id || github.event.workflow_run.id }}"
-          Set-Content -Path build-run-id.txt -Value $rid -NoNewline -Encoding ASCII
+          node scripts/bump-version.cjs ${{ inputs.version }}
+          $ver = node -e "console.log(require('./package.json').version)"
+          echo "NEW_VERSION=$ver" >> $env:GITHUB_ENV
 
-      - name: Upload build-run-id artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-run-id
-          path: build-run-id.txt
+      - name: Derive version from tag (push tag)
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          $tag = "${{ github.ref_name }}" # e.g., v0.4.2
+          $ver = $tag.TrimStart('v')
+          node scripts/bump-version.cjs $ver
+          echo "NEW_VERSION=$ver" >> $env:GITHUB_ENV
 
       - name: Create Git tag (manual dispatch)
         if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -113,23 +101,106 @@ jobs:
           if (-not $id) { throw "Failed to determine release id" }
           echo "RELEASE_ID=$id" >> $env:GITHUB_ENV
 
-      - name: Compose tag name
-        id: tagname
-        shell: pwsh
-        run: |
-          echo "tag=v$env:NEW_VERSION" >> $env:GITHUB_OUTPUT
-
-      - name: Attach NSIS bundle to GitHub Release (if present)
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tagname.outputs.tag }}
-          files: |
-            dist/nsis/*.exe
-            dist/nsis/*.sig
+      - name: Build and Publish Release (Tauri Action)
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: --bundles nsis
+          releaseId: ${{ env.RELEASE_ID }}
 
-      # latest.json will be generated by the updater workflow after publishing the updater
+      - name: Copy launcher EXE for Updater
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/copy-exe.cjs
+          if (-not (Test-Path "installer/payload/build/AvrixLauncher.exe")) { throw "AvrixLauncher.exe not found in installer/payload/build" }
+
+      - name: Compile Inno Setup Updater
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $iscc = 'C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found at $iscc" }
+          # Build updater.iss (expects NEW_VERSION via GetEnv("NEW_VERSION"))
+          & "$iscc" "installer\\updater.iss"
+          $ver = "$env:NEW_VERSION"
+          # Locate resulting updater exe
+          $candidate = Get-ChildItem -Recurse -Path installer -Filter "*$ver*.exe" |
+            Where-Object { $_.FullName -notmatch 'Setup' -and $_.FullName -match '(?i)update|updater' } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $candidate) {
+            # Fallback to most recent exe under installer\Output not being the Setup one
+            $candidate = Get-ChildItem -Recurse -Path installer\Output -Filter "*.exe" |
+              Where-Object { $_.FullName -notmatch 'Setup' } |
+              Sort-Object LastWriteTime -Descending |
+              Select-Object -First 1
+          }
+          if (-not $candidate) { throw "Updater executable not found after compilation" }
+
+          $targetName = "Avrix Launcher-Updater-$ver.exe"
+          $targetPath = Join-Path -Path (Resolve-Path "installer/Output").Path -ChildPath $targetName
+          # Ensure directory exists
+          $null = New-Item -ItemType Directory -Force -Path (Split-Path -Path $targetPath)
+          # Move/rename to the desired name
+          Move-Item -Force -Path $candidate.FullName -Destination $targetPath
+
+          echo "UPDATER_EXE_PATH=$targetPath" >> $env:GITHUB_ENV
+
+      - name: Sign Updater executable
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:UPDATER_EXE_PATH) { throw "UPDATER_EXE_PATH not set" }
+          $sigOut = "$env:UPDATER_EXE_PATH.sig"
+          # Use Tauri signer to create a signature compatible with the updater
+          pnpm tauri signer sign --private-key "$env:TAURI_SIGNING_PRIVATE_KEY" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" -f "$env:UPDATER_EXE_PATH" -o "$sigOut" --ci
+          if (-not (Test-Path $sigOut)) { throw "Failed to generate signature at $sigOut" }
+          echo "UPDATER_SIG_PATH=$sigOut" >> $env:GITHUB_ENV
+
+      - name: Prepare latest.json for S3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ver = "$env:NEW_VERSION"
+
+          # Use the Inno Setup Updater executable and its signature
+          if (-not $env:UPDATER_EXE_PATH) { throw "UPDATER_EXE_PATH not set" }
+          if (-not (Test-Path $env:UPDATER_EXE_PATH)) { throw "Updater executable not found at $env:UPDATER_EXE_PATH" }
+          if (-not $env:UPDATER_SIG_PATH) { throw "UPDATER_SIG_PATH not set" }
+          if (-not (Test-Path $env:UPDATER_SIG_PATH)) { throw "Updater signature not found at $env:UPDATER_SIG_PATH" }
+
+          $installer = Get-Item -Path "$env:UPDATER_EXE_PATH"
+          $sigPath   = "$env:UPDATER_SIG_PATH"
+
+          $sig = (Get-Content $sigPath -Raw).Trim()
+          $pubDate = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+          $assetName = $installer.Name
+
+          $jsonObj = [ordered]@{
+            version   = $ver
+            notes     = ""
+            pub_date  = $pubDate
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = $sig
+                url       = "https://s3.storage.skymunt.com/avrix-launcher/v$ver/$assetName"
+              }
+            }
+          }
+          $json = $jsonObj | ConvertTo-Json -Depth 5
+          Set-Content -Path latest.json -Value $json -Encoding UTF8
+
+          # Expose paths for subsequent step
+          echo "INSTALLER_PATH=$($installer.FullName)" >> $env:GITHUB_ENV
+          echo "LATEST_JSON_PATH=$((Resolve-Path latest.json).Path)" >> $env:GITHUB_ENV
+          echo "SIG_PATH=$sigPath" >> $env:GITHUB_ENV
 
       - name: Upload artifacts to MinIO (S3)
         shell: pwsh
@@ -150,13 +221,56 @@ jobs:
 
           $ver = "$env:NEW_VERSION"
           $dest = "s3/avrix-launcher/v$ver/"
-          if (Test-Path 'dist/nsis') {
-            $exe = Get-ChildItem -Path 'dist/nsis' -Filter '*.exe'
-            $sig = Get-ChildItem -Path 'dist/nsis' -Filter '*.sig'
-            if ($exe) { $exe | ForEach-Object { & $mc cp $_.FullName $dest } }
-            if ($sig) { $sig | ForEach-Object { & $mc cp $_.FullName $dest } }
-          }
+          & $mc cp "$env:INSTALLER_PATH" $dest
+          & $mc cp "$env:SIG_PATH" $dest
 
-          # latest.json upload handled by updater workflow
+          # Publish latest.json at bucket root
+          & $mc cp "$env:LATEST_JSON_PATH" "s3/avrix-launcher/latest.json"
 
-      # Optional legacy Inno step removed to avoid rebuild; can be re-added to consume artifacts if needed
+      - name: Copy launcher EXE for Inno Setup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/copy-exe.cjs
+          if (-not (Test-Path "installer/payload/build/AvrixLauncher.exe")) { throw "AvrixLauncher.exe not found in installer/payload/build" }
+
+      - name: Compile legacy Inno Setup installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found at $iscc" }
+          # NEW_VERSION is already set in env; setup.iss reads it via GetEnv("NEW_VERSION")
+          & "$iscc" "installer\setup.iss"
+          $ver = "$env:NEW_VERSION"
+          # Try to find the output installer
+          $pattern = "*Setup-$ver*.exe"
+          $found = Get-ChildItem -Recurse -Path installer -Filter $pattern | Select-Object -First 1
+          if (-not $found) { $found = Get-ChildItem -Recurse -Path . -Filter $pattern | Select-Object -First 1 }
+          if (-not $found) { throw "Inno installer not found with pattern $pattern" }
+          echo "INNO_EXE_PATH=$($found.FullName)" >> $env:GITHUB_ENV
+
+      - name: Upload Inno installer to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.NEW_VERSION }}
+          files: |
+            ${{ env.INNO_EXE_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Inno installer to MinIO (S3)
+        if: env.INNO_EXE_PATH != ''
+        shell: pwsh
+        env:
+          MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $mc = "$PWD/mc.exe"
+          if (-not (Test-Path $mc)) { Invoke-WebRequest -Uri "https://dl.min.io/client/mc/release/windows-amd64/mc.exe" -OutFile $mc }
+          & $mc alias set s3 $env:MINIO_ENDPOINT $env:MINIO_ACCESS_KEY $env:MINIO_SECRET_KEY
+          $ver = "$env:NEW_VERSION"
+          $dest = "s3/avrix-launcher/v$ver/"
+          & $mc cp "$env:INNO_EXE_PATH" $dest
